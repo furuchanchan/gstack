@@ -140,6 +140,10 @@ export interface PlanSkillCountingOptions {
   env?: Record<string, string>;
   /** Override the spawned model. Defaults via launchClaudePty's chain. */
   model?: string;
+  /** Terminal width forwarded to launchClaudePty (default 120). Tests whose
+   *  disposable paths are long — e.g. macOS's per-user TMPDIR — can widen it
+   *  so a rendered path does not wrap mid-string in the viewport. */
+  cols?: number;
   /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
   driver?: PtyDriver;
 }
@@ -242,6 +246,7 @@ export async function runPlanSkillCounting(opts: PlanSkillCountingOptions): Prom
         ...(opts.bindDesignBoardState ? { DESIGN_DAEMON_STATE_FILE: path.join(fixture.cwd, '.gstack', 'design.json') } : {}),
       },
       model: opts.model,
+      cols: opts.cols,
       seedSkills: true,
       observeScreen: true,
       observePlanReady: true,

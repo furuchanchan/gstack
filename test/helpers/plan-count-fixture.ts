@@ -83,7 +83,10 @@ export function createPlanCountFixture(prompt: string, opts: {
 } {
   if (opts.preconfiguredReviewActor && !opts.nativeReviewOnly)
     throw new Error('Preconfigured review actor requires owned native review state');
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-plan-count-'));
+  // Children report process.cwd() as the kernel-resolved path; on macOS the
+  // per-user TMPDIR is behind /var -> /private/var, so keep this fixture's
+  // identity in the same resolved spelling every hook event will carry.
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-plan-count-')));
   let nativeState: ReturnType<typeof createNativeReviewState> | undefined;
   const env: Record<string, string> = {};
   const cleanup = () => {

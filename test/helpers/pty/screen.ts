@@ -4,7 +4,9 @@
  * Import through test/helpers/claude-pty-runner.ts from tests; pty/ modules import siblings directly.
  */
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { currentFilePermissionTarget, currentBashPermissionCard, currentReadPermissionCard, currentWebFetchPermissionCard, hasCurrentBashPermissionHeading, hasCurrentReadPermissionHeading, hasCurrentWebFetchPermissionHeading } from '../plan-skill-questions';
 import { createRequire } from 'node:module';
 
@@ -33,8 +35,12 @@ function loadTerminal(): Promise<any> {
         } }],
       });
       if (!build.success) throw new AggregateError(build.logs, 'Installed xterm headless build failed');
-      const encoded = Buffer.from(await build.outputs[0].text()).toString('base64');
-      return (await import(`data:text/javascript;base64,${encoded}`)).Terminal;
+      // A `data:` URL import exceeds the module-specifier length cap on some
+      // Bun releases (NameTooLong). Spool the bundle to a real file instead.
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-pty-screen-'));
+      const bundle = path.join(dir, 'xterm-headless.mjs');
+      fs.writeFileSync(bundle, await build.outputs[0].text());
+      return (await import(pathToFileURL(bundle).href)).Terminal;
     } catch (cause) {
       throw new Error('PTY screen unavailable; cannot safely observe terminal input.', { cause });
     }
