@@ -23,8 +23,21 @@ import { dirname, join } from "path";
 
 let dir: string;
 const run = (args: string[], cwd = dir): string => {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 30_000 });
-  if (r.status !== 0) throw new Error(`git ${args.join(" ")}\n${r.stderr}`);
+  const r = spawnSync("git", args, {
+    cwd, encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
+  });
+  if (r.status !== 0) {
+    // Surface the full failure reason — under parallel load a timeout-killed
+    // push leaves status null with a signal/error, and a truncated buffer
+    // otherwise hides git's rejection lines (#2967).
+    const detail = [
+      `exit=${r.status ?? "null"}`,
+      r.signal ? `signal=${r.signal}` : "",
+      r.error ? `error=${r.error.message}` : "",
+    ].filter(Boolean).join(" ");
+    const stdout = r.stdout ? `\nstdout:\n${r.stdout}` : "";
+    throw new Error(`git ${args.join(" ")} (${detail})\n${r.stderr ?? ""}${stdout}`);
+  }
   return r.stdout ?? "";
 };
 const commit = (file: string, body: string, msg: string, cwd = dir) => {
