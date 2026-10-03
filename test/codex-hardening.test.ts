@@ -869,7 +869,7 @@ describe('/codex GSTACK_CODEX_EFFORT env default (#2975)', () => {
   test('skill documents precedence, valid values and early rejection', () => {
     expect(SKILL).toContain('GSTACK_CODEX_EFFORT');
     expect(SKILL).toContain('low|medium|high|xhigh|max');
-    expect(SKILL).toContain('do not invoke Codex');
+    expect(SKILL).toContain('Reject a `GSTACK_CODEX_EFFORT` outside');
     for (const section of ['challenge-mode', 'consult-mode', 'review-mode']) {
       const md = fs.readFileSync(path.join(ROOT, 'codex', 'sections', `${section}.md`), 'utf-8');
       expect(md).toContain('it overrides both the per-mode default and `GSTACK_CODEX_EFFORT`');
@@ -879,7 +879,8 @@ describe('/codex GSTACK_CODEX_EFFORT env default (#2975)', () => {
   test('shell expansion yields mode default unset and env value when set', () => {
     const run = (env: string) => spawnSync('bash', ['-c',
       `set -- -c "model_reasoning_effort=\\"\${GSTACK_CODEX_EFFORT:-high}\\""; printf '%s' "$2"`],
-      { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', GSTACK_CODEX_EFFORT: env } });
+      { encoding: 'utf8', timeout: 5000,
+        env: { PATH: process.env.PATH ?? '', GSTACK_CODEX_EFFORT: env } });
     expect(run('').stdout).toBe('model_reasoning_effort="high"');
     expect(run('max').stdout).toBe('model_reasoning_effort="max"');
   });
