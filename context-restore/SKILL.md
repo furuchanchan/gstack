@@ -554,6 +554,12 @@ Status:      {status}
 {notes}
 ```
 
+Saved items carry a provenance suffix (#3004): `(path run)`, `(path read)`,
+`(path assumed)`, `(code read)`, or `(target state checked)`. Items marked
+`(path assumed)` or `(code read)` were never executed — present them under a
+"Verify first:" note instead of offering them as ready next steps. Items
+without a suffix come from older checkpoints; treat them as unverified.
+
 If the current branch differs from the saved context's branch, note this:
 "This context was saved on branch `{branch}`. You are currently on
 `{current branch}`. You may want to switch branches before continuing."

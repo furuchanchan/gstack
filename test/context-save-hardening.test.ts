@@ -432,3 +432,29 @@ describe('migration v1.1.3.0: HOME guard', () => {
     expect(result.stdout.toString().trim()).toBe('');
   });
 });
+
+// ─── Remaining Work provenance (#3004) ─────────────────────────────────────
+
+describe('context-save: remaining-work provenance contract (#3004)', () => {
+  const SAVE_MD = fs.readFileSync(
+    path.join(import.meta.dir, '..', 'context-save', 'SKILL.md'), 'utf-8');
+  const RESTORE_MD = fs.readFileSync(
+    path.join(import.meta.dir, '..', 'context-restore', 'SKILL.md'), 'utf-8');
+
+  test('save template requires Open. prefix and provenance suffixes', () => {
+    for (const suffix of ['(path run)', '(path read)', '(path assumed)',
+                          '(code read)', '(target state checked)']) {
+      expect(SAVE_MD).toContain(suffix);
+    }
+    expect(SAVE_MD).toContain('Open.');
+    // Status-looking markers on open items are what the issue forbids.
+    expect(SAVE_MD).toContain('Never use status-looking markers like `[done]` or `[executed]`');
+  });
+
+  test('restore routes unverified items to "Verify first"', () => {
+    expect(RESTORE_MD).toContain('Verify first:');
+    expect(RESTORE_MD).toContain('(path assumed)');
+    expect(RESTORE_MD).toContain('(code read)');
+    expect(RESTORE_MD).toContain('unverified');
+  });
+});

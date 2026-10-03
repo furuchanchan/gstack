@@ -81,7 +81,16 @@ Using the gathered state plus your conversation history, produce a summary cover
 
 1. **What's being worked on** — the high-level goal or feature
 2. **Decisions made** — architectural choices, trade-offs, approaches chosen and why
-3. **Remaining work** — concrete next steps, in priority order
+3. **Remaining work** — concrete next steps, in priority order. Every item starts
+   with the status `Open.` and each item naming a concrete path (a command, a
+   switch, a config value, a file) carries a provenance suffix in parentheses:
+   `(path run)` if you actually executed it this session, `(path read)` if you
+   verified it by reading code, `(path assumed)` if it was inferred but never
+   checked. For steps that write to an external system (a migration, a sync, a
+   dialog that inserts), distinguish `(code read)` — the code looks right —
+   from `(target state checked)` — you confirmed the live schema/state.
+   Never use status-looking markers like `[done]` or `[executed]` on an open
+   item; they read as "finished" on restore.
 4. **Notes** — anything a future session needs to know (gotchas, blocked items,
    open questions, things that were tried and didn't work)
 
@@ -172,7 +181,11 @@ files_modified:
 
 ### Remaining Work
 
-{Numbered list of concrete next steps, in priority order}
+{Numbered list of concrete next steps, in priority order.
+Each item starts with `Open.` and items naming a concrete path end with a
+provenance suffix: `(path run)`, `(path read)`, `(path assumed)`,
+`(code read)`, or `(target state checked)`. Example:
+`1. Open. Rerun the fixture with CONFIG_FAST=1 (path assumed)`}
 
 ### Notes
 
