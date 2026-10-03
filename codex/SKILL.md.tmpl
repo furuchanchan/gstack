@@ -162,10 +162,15 @@ above); never read the other two mode sections.
 **Reasoning effort override:** If the user's input contains `--xhigh` anywhere,
 note it and remove it from the prompt text before passing to Codex. When `--xhigh`
 is present, use `model_reasoning_effort="xhigh"` for all modes regardless of the
-per-mode default below. Otherwise, use the per-mode defaults:
+per-mode default below or `GSTACK_CODEX_EFFORT`. Otherwise the effort resolves as
+`GSTACK_CODEX_EFFORT` (when set) over the per-mode defaults:
 - Review (2A): `high` — bounded diff input, needs thoroughness
 - Challenge (2B): `high` — adversarial but bounded by diff
 - Consult (2C): `medium` — large context, interactive, needs speed
+
+If `GSTACK_CODEX_EFFORT` is set to a value outside `low|medium|high|xhigh|max`,
+do not invoke Codex — tell the user the value is invalid and stop. Codex itself
+only rejects a bad `model_reasoning_effort` at request time, as an API error.
 
 ---
 
@@ -231,6 +236,11 @@ review pin in the CLI config cannot override the request.
 - **Review (2A):** `high` — bounded diff input, needs thoroughness but not max tokens
 - **Challenge (2B):** `high` — adversarial but bounded by diff size
 - **Consult (2C):** `medium` — large context (plans, codebase), interactive, needs speed
+
+`GSTACK_CODEX_EFFORT` (`low|medium|high|xhigh|max`) overrides the per-mode default
+for all modes, the same way `GSTACK_CODEX_MODEL` sets the model — for operators
+whose cheap models benefit from maximum reasoning. A `--xhigh` flag on the request
+still wins for that request.
 
 `xhigh` uses ~23x more tokens than `high` and causes 50+ minute hangs on large context
 tasks (OpenAI issues #8545, #8402, #6931). Users can override with `--xhigh` flag

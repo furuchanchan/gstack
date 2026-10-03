@@ -23,7 +23,7 @@ Review the changes on this branch against the base branch. Run `git diff origin/
 Use `timeout: 660000` on the Bash call — the gate sits ABOVE the 600s wrapper so the
 wrapper fires first with its explicit stall message:
 
-If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
+If the user passed `--xhigh`, use `model_reasoning_effort="xhigh"` — it overrides both the per-mode default and `GSTACK_CODEX_EFFORT`.
 
 ```bash
 _REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
@@ -35,7 +35,7 @@ fi
 # Fix 1+2: wrap with timeout (gtimeout/timeout fallback chain via probe helper),
 # capture stderr to $TMPERR for auth error detection (was: 2>/dev/null).
 TMPERR=${TMPERR:-$(mktemp "$TMP_ROOT/codex-err-XXXXXX")}
-_gstack_codex_timeout_wrapper 600 codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c "model=\"${GSTACK_CODEX_MODEL:-gpt-6-astra}\"" -c 'model_reasoning_effort="high"' -c 'web_search="cached"' --json < /dev/null 2>"$TMPERR" | PYTHONUNBUFFERED=1 "$PYTHON_CMD" -u -c "
+_gstack_codex_timeout_wrapper 600 codex exec "<prompt>" -C "$_REPO_ROOT" -s read-only -c "model=\"${GSTACK_CODEX_MODEL:-gpt-6-astra}\"" -c "model_reasoning_effort=\"${GSTACK_CODEX_EFFORT:-high}\"" -c 'web_search="cached"' --json < /dev/null 2>"$TMPERR" | PYTHONUNBUFFERED=1 "$PYTHON_CMD" -u -c "
 import sys, json
 turn_completed_count = 0
 turn_failed = False

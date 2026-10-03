@@ -848,3 +848,39 @@ describe('codex broken-install detection (#2742)', () => {
     expect(src).toContain('_CODEX_MP=$?');
   });
 });
+
+describe('/codex GSTACK_CODEX_EFFORT env default (#2975)', () => {
+  const SKILL = fs.readFileSync(path.join(ROOT, 'codex', 'SKILL.md'), 'utf-8');
+  const SECTIONS = ['challenge-mode', 'consult-mode', 'review-mode'].map(s =>
+    fs.readFileSync(path.join(ROOT, 'codex', 'sections', `${s}.md`), 'utf-8')).join('\n');
+  const flagRe = /model_reasoning_effort=\\"\$\{GSTACK_CODEX_EFFORT:-(\w+)\}\\"/g;
+  const sites = [...SECTIONS.matchAll(flagRe)].map(m => m[1]);
+
+  test('every effort flag resolves through the env default', () => {
+    expect(sites.length).toBe(5);
+    // Per-mode defaults preserved as the :- fallback: review/challenge high,
+    // consult medium (two consult sites: exec + resume).
+    expect(sites.filter(d => d === 'high').length).toBe(3);
+    expect(sites.filter(d => d === 'medium').length).toBe(2);
+    // No hard-coded effort flag may remain beside them.
+    expect(SECTIONS).not.toMatch(/model_reasoning_effort=\\"(high|medium|low|xhigh|max)\\"/);
+  });
+
+  test('skill documents precedence, valid values and early rejection', () => {
+    expect(SKILL).toContain('GSTACK_CODEX_EFFORT');
+    expect(SKILL).toContain('low|medium|high|xhigh|max');
+    expect(SKILL).toContain('do not invoke Codex');
+    for (const section of ['challenge-mode', 'consult-mode', 'review-mode']) {
+      const md = fs.readFileSync(path.join(ROOT, 'codex', 'sections', `${section}.md`), 'utf-8');
+      expect(md).toContain('it overrides both the per-mode default and `GSTACK_CODEX_EFFORT`');
+    }
+  });
+
+  test('shell expansion yields mode default unset and env value when set', () => {
+    const run = (env: string) => spawnSync('bash', ['-c',
+      `set -- -c "model_reasoning_effort=\\"\${GSTACK_CODEX_EFFORT:-high}\\""; printf '%s' "$2"`],
+      { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', GSTACK_CODEX_EFFORT: env } });
+    expect(run('').stdout).toBe('model_reasoning_effort="high"');
+    expect(run('max').stdout).toBe('model_reasoning_effort="max"');
+  });
+});
