@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.28.0] - 2026-10-06
+
+**The greptile-triage reply snippets can no longer run shell commands quoted from a diff or a review comment.**
+
+`review/greptile-triage.md` showed replies posted with `-f body="<reply text>"`. Inside a double-quoted string, bash runs every backticked span as command substitution — and the reply templates put backticks around commit SHAs, code diffs, and text quoted from reviewer comments. An agent following the template could execute untrusted text from the diff on the user's machine, and even benign text posted silently wrong ("**Fixed** in `<sha>`." arrived as "Fixed in ." with no error). Both snippets now build the body through a quoted-`EOF` heredoc and post `-f body="$reply_body"`, which expands nothing. (#3046)
+
 ## [1.91.27.0] - 2026-10-05
 
 **The first protected-main runtime staging run can finish, and a qualified scanner catalog can ship.**

@@ -98,15 +98,25 @@ When replying to Greptile comments, use the correct endpoint based on comment so
 
 **Line-level comments** (from `pulls/$PR/comments`):
 ```bash
+reply_body=$(cat <<'EOF'
+<reply text>
+EOF
+)
 gh api repos/$REPO/pulls/$PR_NUMBER/comments/$COMMENT_ID/replies \
-  -f body="<reply text>"
+  -f body="$reply_body"
 ```
 
 **Top-level comments** (from `issues/$PR/comments`):
 ```bash
+reply_body=$(cat <<'EOF'
+<reply text>
+EOF
+)
 gh api repos/$REPO/issues/$PR_NUMBER/comments \
-  -f body="<reply text>"
+  -f body="$reply_body"
 ```
+
+**Never paste the reply text inside double quotes** (`-f body="<reply text>"`): the templates below contain backticks, and inside `"…"` bash runs every backticked span as a command — code quoted from the diff or a reviewer comment would execute on your machine. The quoted-`EOF` heredoc expands nothing, and `"$reply_body"` is safe because shell expansion never re-parses a variable's contents.
 
 **If a reply POST fails** (e.g., PR was closed, no write permission): warn and continue. Do not stop the workflow for a failed reply.
 
