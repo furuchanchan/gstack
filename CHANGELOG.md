@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.29.0] - 2026-10-07
+
+**A Codex usage-limit refusal is classified unusable with its reset time, instead of an inconclusive probe that re-ran every section.**
+
+When the Codex account hit its usage allowance, `gstack-codex-probe` matched no classifier and fell through to `MODEL_PROBE_INCONCLUSIVE` — a fail-open that proceeded anyway, pointed the user at a model-400 hint that could not help, and was never cached, so every later skill section paid the 30-second probe again. A usage-limit / quota / billing refusal is now classified `MODEL_UNUSABLE` like the deterministic model rejections: the refusal lines (including the reset time) are echoed verbatim, the hint names the real cause and the remedy, telemetry logs `codex_usage_limit`, and the refusal is negative-cached for the 15-minute TTL so one probe serves the whole skill. Per-minute rate-limit noise that names no allowance window still falls through to inconclusive on purpose. (#3051)
+
 ## [1.91.27.0] - 2026-10-05
 
 **The first protected-main runtime staging run can finish, and a qualified scanner catalog can ship.**

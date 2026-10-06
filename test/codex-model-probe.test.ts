@@ -53,6 +53,9 @@ case "\${STUB_MODE:-ok}" in
     echo 'ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The '"'"'gpt-6-astra'"'"' model is not supported when using Codex with a ChatGPT account."}}' >&2
     exit 1 ;;
   transient) echo "stream error: network unreachable" >&2; exit 7 ;;
+  usagelimit)
+    echo "ERROR: You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Oct 10th, 2026 2:55 AM." >&2
+    exit 1 ;;
   retired404)
     echo 'ERROR: unexpected status 404 Not Found: The model \`gpt-5.2-codex\` does not exist or you do not have access to it., url: https://chatgpt.com/backend-api/codex/responses' >&2
     exit 1 ;;
@@ -189,6 +192,31 @@ describe('codex model probe (#2477)', () => {
       expect(r.status).toBe(0);
       expect(invocations(f)).toBe(2);
       expect(lastArgs(f)).toContain('-c model="gpt-5.6-sol"');
+    } finally {
+      fs.rmSync(f.home, { recursive: true, force: true });
+    }
+  });
+
+  test('usage-limit refusal -> MODEL_UNUSABLE with the reset line, exit 1, negative-cached (#3051)', () => {
+    const f = makeFixture();
+    try {
+      const r = runProbe(f, 'usagelimit');
+      expect(r.stdout).toContain('MODEL_UNUSABLE');
+      expect(r.stdout).not.toContain('MODEL_PROBE_INCONCLUSIVE');
+      expect(r.status).toBe(1);
+      // The refusal names the real cause and its reset time — never the
+      // model hint that sent the reporter chasing config.toml.
+      expect(r.stdout).toContain('usage allowance is exhausted');
+      expect(r.stdout).toContain('Oct 10th, 2026 2:55 AM');
+      expect(r.stdout).not.toContain('choose a model');
+      expect(invocations(f)).toBe(1);
+      // Deterministic: the allowance cannot return inside the 15-min TTL,
+      // so every later skill must reuse the cached refusal instead of
+      // paying the 30s round trip again.
+      const second = runProbe(f, 'usagelimit');
+      expect(second.stdout).toContain('MODEL_UNUSABLE (cached)');
+      expect(second.status).toBe(1);
+      expect(invocations(f)).toBe(1);
     } finally {
       fs.rmSync(f.home, { recursive: true, force: true });
     }

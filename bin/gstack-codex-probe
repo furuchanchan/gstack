@@ -248,6 +248,20 @@ _gstack_codex_model_probe() {
     echo "MODEL_OK"
     return 0
   fi
+  # Quota exhaustion (#3051): "You've hit your usage limit" (and kin) is a
+  # deterministic ACCOUNT-level refusal — not a model rejection, not network
+  # luck. Falling through to inconclusive hid the reset time behind a model
+  # hint AND re-probed every skill for 30s (inconclusive is never cached).
+  # It caches as MODEL_UNUSABLE (15 min like the model refusals) because the
+  # allowance cannot return sooner than the printed reset anyway.
+  if printf '%s' "$_out" | grep -qiE 'usage.{0,10}limit|usage_limit|hit your|purchase more credits|insufficient.{0,20}quota|quota.{0,20}(exceeded|exhausted)|rate.{0,10}limit.{0,20}(monthly|period|window)|billing.{0,20}limit'; then
+    [ -n "$_cache" ] && { mkdir -p "$_gstack_home" 2>/dev/null; printf 'MODEL_UNUSABLE %s %s\n' "$_now" "$_sig" > "$_cache" 2>/dev/null; }
+    echo "MODEL_UNUSABLE"
+    printf '%s\n' "$_out" | grep -iE 'usage|limit|quota|credit|reset|try again' | head -3
+    echo "HINT: the Codex account's usage allowance is exhausted — no model choice fixes this. Codex's error names the reset time (shown above); retry after it, or raise the allowance on the account."
+    _gstack_codex_log_event "codex_usage_limit" 2>/dev/null || true
+    return 1
+  fi
   # A model rejection is deterministic: a 400 ("is not supported", "requires a
   # newer version of Codex") or a 404. A retired model answers 404 "does not
   # exist or you do not have access to it", and a custom provider with a wrong
