@@ -46,6 +46,7 @@ phase entry.
 | Code | Cause |
 |------|-------|
 | `competing_root` | The journal has more than one conversation root, or two records share one UUID. |
+| `oversize` | The journal exceeds the guard's 32 MiB read limit. A long session's journal can outgrow it; the guard cannot verify the session and retries would never help. |
 | `foreign_cwd` | The journal's root was written in another project directory, after spelling and symlinks are taken into account. Linked git worktrees of the project are accepted. |
 | `sidechain` | The first turn or its ancestry is a sidechain (subagent) record, not the parent session. |
 | `agent` | The conversation ancestry passes through a subagent record. |

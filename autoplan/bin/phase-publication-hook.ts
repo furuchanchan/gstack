@@ -523,6 +523,7 @@ type OwnedRead = ReturnType<typeof readOwnedClaudePublicTranscript>;
 /** Positive identity conflicts: retrying cannot change them, so they deny with the supported fallback. */
 const HARD_CAUSE: Partial<Record<OwnedTranscriptReason, string>> = {
   competing_root: 'The session journal has more than one conversation root, so this session cannot be identified.',
+  oversize: 'The session journal exceeds the 32 MiB read limit, so the guard cannot verify it.',
   foreign_cwd: "The session journal was started in a different project directory than this hook's project.",
   sidechain: "The session journal's first turn or its ancestry is a sidechain record, not the parent session.",
   agent: "The session journal's conversation ancestry passes through a subagent record.",

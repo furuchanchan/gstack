@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.30.0] - 2026-10-07
+
+**A journal past the 32 MiB read limit is a hard denial naming `oversize`, not a two-second identity retry loop.**
+
+`readOwnedClaudePublicTranscript` reported a session journal larger than 32 MiB as `identity` — a retry-class cause — so the phase-publication hook denied and re-read the file every 50 ms until the deadline, then blamed evidence that "has not reached the journal yet". The failure can never clear: the file only grows. A new `oversize` reason now comes out of the owned read, lands in `HARD_CAUSE`, and denies immediately with the manual review fallback and troubleshooting guide, in the same class as `competing_root` and `foreign_cwd`. The troubleshooting doc lists `oversize`. (#3050)
+
 ## [1.91.27.0] - 2026-10-05
 
 **The first protected-main runtime staging run can finish, and a qualified scanner catalog can ship.**

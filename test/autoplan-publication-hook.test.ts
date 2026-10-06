@@ -143,6 +143,24 @@ describe('Autoplan hook journal-root verdicts', () => {
       expect(fs.existsSync(s.log)).toBe(false);
     });
 
+  test('an oversize journal is a hard denial naming the code, not an identity retry (#3050)', async () => {
+    const s = session('startup');
+    // Past the 32 MiB bound the journal can never verify: the read must report
+    // 'oversize' so the hook denies immediately instead of retrying 'identity'
+    // until the deadline and blaming unflushed evidence.
+    fs.appendFileSync(s.file, Buffer.alloc(33 * 1024 * 1024));
+    const output = await s.hookRun();
+    expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+    const reason: string = output.hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('code oversize');
+    expect(reason).toContain('32 MiB');
+    expect(reason).toContain('/plan-ceo-review, then /plan-devex-review, then /plan-eng-review');
+    expect(reason).toContain('docs/autoplan-guard-troubleshooting.md');
+    expect(reason).not.toContain('no missing-publication conclusion');
+    expect(reason).not.toContain('code identity');
+    expect(fs.existsSync(s.log)).toBe(false);
+  });
+
   test('a real 2.1.284 SessionStart journal is owned and reaches publication evaluation', async () => {
     const s = session('startup');
     const output = await s.hookRun();
@@ -167,8 +185,8 @@ describe('Autoplan hook journal-root verdicts', () => {
 
   test('the guide documents every guard code', () => {
     const guide = fs.readFileSync(path.join(ROOT, 'docs/autoplan-guard-troubleshooting.md'), 'utf8');
-    for (const code of ['competing_root', 'foreign_cwd', 'sidechain', 'agent', 'cycle', 'changing', 'identity', 'malformed',
-      'unrecognized_shape']) expect(guide).toContain(`\`${code}`);
+    for (const code of ['competing_root', 'oversize', 'foreign_cwd', 'sidechain', 'agent', 'cycle', 'changing', 'identity',
+      'malformed', 'unrecognized_shape']) expect(guide).toContain(`\`${code}`);
     for (const detail of ['unrecognized_shape:cwd_spelling', 'analytics/autoplan-guard.jsonl']) expect(guide).toContain(detail);
   });
 });

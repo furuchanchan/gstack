@@ -175,11 +175,11 @@ function sameRealPath(a: unknown, b: unknown): boolean {
 
 /**
  * Why an owned journal supplied no owned lines (docs/autoplan-guard-troubleshooting.md).
- * Positive identity conflicts are hard; `changing`, `identity` and `malformed`
+ * Positive identity conflicts and `oversize` are hard; `changing`, `identity` and `malformed`
  * retry; only `unrecognized_shape:*` may degrade to an advisory.
  */
 export type OwnedTranscriptReason = 'competing_root' | 'foreign_cwd' | 'sidechain' | 'agent' | 'cycle' |
-  'changing' | 'identity' | 'malformed' | `unrecognized_shape:${string}`;
+  'oversize' | 'changing' | 'identity' | 'malformed' | `unrecognized_shape:${string}`;
 type OwnedLines = { lines: string[]; root?: string } | { reason: OwnedTranscriptReason; shape: string[] };
 
 const nativeUuid = (value: unknown): value is string => typeof value === 'string' &&
@@ -552,7 +552,9 @@ export function readOwnedClaudePublicTranscript(file: string, cwd: string, sessi
       throw new OwnedReadError('identity');
     fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     const before = fs.fstatSync(fd, { bigint: true });
-    if (!before.isFile() || before.size > BigInt(MAX_BYTES)) throw new OwnedReadError('identity');
+    if (!before.isFile()) throw new OwnedReadError('identity');
+    // Past the bound the journal can never verify: fail closed, never retry (#3050).
+    if (before.size > BigInt(MAX_BYTES)) throw new OwnedReadError('oversize');
     bytes = fs.readFileSync(fd);
     const after = fs.fstatSync(fd, { bigint: true }), current = fs.lstatSync(file, { bigint: true });
     if (!current.isFile() || before.dev !== current.dev || before.ino !== current.ino) throw new OwnedReadError('identity');
