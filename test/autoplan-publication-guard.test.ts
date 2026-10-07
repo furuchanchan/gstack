@@ -933,6 +933,41 @@ describe('Autoplan authenticated phase consumption', () => {
     f.use('next', 'Agent', f.input.tool_input);
     expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('Publish the filled Phase 2.5') });
   });
+  // #3062: the fork-subagent gate drops run_in_background from the Agent
+  // schema — the journal keeps it (raw input, string "false" on 2.1.29x)
+  // while the payload loses it. The key picks fg/bg only; both sides ignore
+  // it, so the identity check sees through either asymmetry.
+  test('a journaled run_in_background stripped from the Agent payload still authenticates (#3062)', () => {
+    const f = fixture('dx', 'eng'), next = nextSnapshot(f); f.message();
+    f.input.tool_name = 'Agent'; f.input.tool_input = { prompt: next.snapshot.nativeDispatchPrompt };
+    f.use('next', 'Agent', { ...f.input.tool_input, run_in_background: 'false' });
+    expect(f.evaluate()).toEqual({ allow: true });
+  });
+  test('a payload-side run_in_background the journal lacks also authenticates (#3062)', () => {
+    const f = fixture('dx', 'eng'), next = nextSnapshot(f); f.message();
+    f.input.tool_name = 'Agent'; f.input.tool_input = { prompt: next.snapshot.nativeDispatchPrompt, run_in_background: false };
+    f.use('next', 'Agent', { prompt: next.snapshot.nativeDispatchPrompt });
+    expect(f.evaluate()).toEqual({ allow: true });
+  });
+  test('a different journal-only Agent key denies by name instead of retrying (#3062)', () => {
+    const f = fixture('dx', 'eng'), next = nextSnapshot(f); f.message();
+    f.input.tool_name = 'Agent'; f.input.tool_input = { prompt: next.snapshot.nativeDispatchPrompt };
+    f.use('next', 'Agent', { ...f.input.tool_input, some_future_key: 'x' });
+    const d = f.evaluate();
+    expect(d.allow).toBe(false);
+    if (!d.allow) {
+      expect(d.reason).toContain('schema_stripped_agent_input');
+      expect(d.reason).toContain('some_future_key');
+      expect(d.reason).toContain('CLAUDE_CODE_FORK_SUBAGENT=false');
+      expect(d.reason).not.toContain('Retry');
+    }
+  });
+  test('a changed prompt next to a stripped key is not excused by the strip (#3062)', () => {
+    const f = fixture('dx', 'eng'), next = nextSnapshot(f); f.message();
+    f.input.tool_name = 'Agent'; f.input.tool_input = { prompt: next.snapshot.nativeDispatchPrompt };
+    f.use('next', 'Agent', { prompt: 'An entirely different prompt.', run_in_background: 'false' });
+    expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('identity is unavailable') });
+  });
   const nextInput = (f: ReturnType<typeof fixture>, file: string) => { f.input.tool_input = { file_path: file }; f.current(); };
   function target(f: ReturnType<typeof fixture>, kind: string) {
     const n = nextSnapshot(f);

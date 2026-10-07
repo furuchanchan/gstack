@@ -168,7 +168,7 @@ describe('Autoplan hook journal-root verdicts', () => {
   test('the guide documents every guard code', () => {
     const guide = fs.readFileSync(path.join(ROOT, 'docs/autoplan-guard-troubleshooting.md'), 'utf8');
     for (const code of ['competing_root', 'foreign_cwd', 'sidechain', 'agent', 'cycle', 'changing', 'identity', 'malformed',
-      'unrecognized_shape']) expect(guide).toContain(`\`${code}`);
+      'unrecognized_shape', 'schema_stripped_agent_input']) expect(guide).toContain(`\`${code}`);
     for (const detail of ['unrecognized_shape:cwd_spelling', 'analytics/autoplan-guard.jsonl']) expect(guide).toContain(detail);
   });
 });

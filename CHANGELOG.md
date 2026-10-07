@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.34.0] - 2026-10-07
+
+**/autoplan accepts Agent dispatches whose `run_in_background` the schema stripped, and names the next stripped key instead of retrying forever.**
+
+Claude Code journals the model's raw `Agent` input but hands PreToolUse the schema-parsed input. The fork-subagent gate (`CLAUDE_CODE_FORK_SUBAGENT`, default on in 2.1.29x) removes `run_in_background` from the Agent schema, so a dispatch carrying the key had it in the journal and not in the payload — the identity deep-equal could never pass and every phase-entry denial said "retry". The guard now drops `run_in_background` from both sides (it selects foreground vs background only; the prompt stays bound by `consumption()`), and when the journal and payload differ only by keys the journal has and the payload lacks, it denies once with `schema_stripped_agent_input`, naming the keys and the `CLAUDE_CODE_FORK_SUBAGENT=false` workaround, instead of an endless retry. (#3062)
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

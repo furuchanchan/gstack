@@ -35,8 +35,39 @@ const requestedPath = (cwd: string, file: string) =>
  * PreToolUse its resolved form (C:\x/y becomes C:\x\y). Compare that one field
  * as the file it names; every other field stays exact.
  */
-const nativeToolInput = (input: unknown, cwd: string): unknown =>
-  object(input) && typeof input.file_path === 'string' ? { ...input, file_path: requestedPath(cwd, input.file_path) } : input;
+const nativeToolInput = (input: unknown, cwd: string, tool?: string): unknown => {
+  if (!object(input)) return input;
+  let out: Record<string, unknown> = input;
+  if (typeof out.file_path === 'string') out = { ...out, file_path: requestedPath(cwd, out.file_path) };
+  // #3062: Claude journals the model's RAW Agent input but hands PreToolUse
+  // the schema-parsed input, and the fork-subagent gate
+  // (CLAUDE_CODE_FORK_SUBAGENT, default on in 2.1.29x) removes
+  // run_in_background from the Agent schema — the parse strips a key the
+  // journal retains, so the deep-equal could never pass. The key selects
+  // foreground vs background only; it cannot change the phase or the prompt,
+  // which stays bound by consumption(). Drop it from both sides.
+  if (tool === 'Agent' && 'run_in_background' in out) {
+    const { run_in_background: _ignored, ...rest } = out;
+    out = rest;
+  }
+  return out;
+};
+
+/**
+ * Keys present in the journaled Agent input but absent from the PreToolUse
+ * payload, when removing them makes the two equal (#3062, ask 2). That shape
+ * is the signature of a schema strip — a future gate removing another key —
+ * and deserves a named denial, not an endless "retry" that can never pass.
+ */
+function schemaStrippedAgentKeys(journaled: unknown, payload: unknown, cwd: string): string[] {
+  const j = nativeToolInput(journaled, cwd, 'Agent'), p = nativeToolInput(payload, cwd, 'Agent');
+  if (!object(j) || !object(p)) return [];
+  const missing = Object.keys(j).filter((k) => !(k in p));
+  if (!missing.length) return [];
+  const rest: Record<string, unknown> = { ...j };
+  for (const k of missing) delete rest[k];
+  return isDeepStrictEqual(rest, p) ? missing : [];
+}
 class BoundaryError extends Error {}
 function fail(reason: string): never { throw new BoundaryError(reason); }
 export interface PublicationHookInput {
@@ -425,7 +456,18 @@ function evaluatePublication(input: PublicationHookInput, root: string, events: 
     if (pendingRead ? input.tool_name !== 'Read' || events.some(e =>
       (e.kind === 'use' || e.kind === 'result') && e.toolUseId === input.tool_use_id) :
       current.length !== 1 || current[0]!.kind !== 'use' || current[0]!.name !== input.tool_name ||
-        !isDeepStrictEqual(nativeToolInput(current[0]!.input, input.cwd), nativeToolInput(input.tool_input, input.cwd))) fail('Current native phase-entry identity is unavailable. Retry this phase-entry tool after the journal is available.');
+        !isDeepStrictEqual(nativeToolInput(current[0]!.input, input.cwd, input.tool_name), nativeToolInput(input.tool_input, input.cwd, input.tool_name))) {
+      // A journal-side key the payload lacks is a schema strip, not pending
+      // evidence — retrying can never make it pass (#3062, ask 2).
+      if (!pendingRead && input.tool_name === 'Agent' && current.length === 1 && current[0]!.kind === 'use' && current[0]!.name === 'Agent') {
+        const stripped = schemaStrippedAgentKeys(current[0]!.input, input.tool_input, input.cwd);
+        if (stripped.length) fail(`The journaled Agent input carries ${stripped.map((k) => JSON.stringify(k)).join(', ')} ` +
+          'that Claude Code stripped from the PreToolUse payload — the signature of the fork-subagent gate. ' +
+          'Set CLAUDE_CODE_FORK_SUBAGENT=false and restart Claude Code, or dispatch without that key. ' +
+          `${guidance('schema_stripped_agent_input')}`);
+      }
+      fail('Current native phase-entry identity is unavailable. Retry this phase-entry tool after the journal is available.');
+    }
     const before = pendingRead ? events : events.filter(e => e.order < current[0]!.order);
     // Pinned Claude retains skill hooks after end_turn. Only an authenticated
     // later human request can release the old invocation; tool results and

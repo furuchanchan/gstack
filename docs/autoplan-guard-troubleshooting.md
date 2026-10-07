@@ -51,6 +51,7 @@ phase entry.
 | `agent` | The conversation ancestry passes through a subagent record. |
 | `cycle` | The journal's parent links form a loop. |
 | `too_large` | The session journal is over the 32 MiB limit the guard reads (the message names its size). See [Journal too large](#journal-too-large). |
+| `schema_stripped_agent_input` | The journaled Agent input carries keys Claude Code stripped from the PreToolUse payload — the fork-subagent gate's signature. See [Agent schema stripped input](#agent-schema-stripped-input). |
 
 **What to do:** run the review phases by hand: `/plan-ceo-review`, then
 `/plan-devex-review`, then `/plan-eng-review`. Or start a new Claude Code
@@ -74,6 +75,28 @@ never helps.
 
 Or run the reviews by hand: `/plan-ceo-review`, `/plan-devex-review`, then
 `/plan-eng-review`.
+
+<a id="agent-schema-stripped-input"></a>
+### Agent schema stripped input (`schema_stripped_agent_input`)
+
+Claude Code journals the model's **raw** `Agent` tool input but hands
+PreToolUse the **schema-parsed** input. The fork-subagent gate
+(`CLAUDE_CODE_FORK_SUBAGENT`, default on in Claude Code 2.1.29x) removes
+`run_in_background` from the Agent schema, so a dispatch carrying that key has
+it in the journal and not in the payload. The key selects foreground vs
+background only — the guard drops it from both sides and proceeds, so the
+reported case is fixed outright. `run_in_background` is journaled as the
+string `"false"` on some versions; the comparison strips the key regardless of
+its type.
+
+This code is for the NEXT key a schema strips: when the journal and payload
+differ only by keys the journal has and the payload lacks, retrying can never
+pass, so the guard denies and names the stripped keys.
+
+**What to do:** set `CLAUDE_CODE_FORK_SUBAGENT=false` (for example in the
+`env` block of `~/.claude/settings.json`) and restart Claude Code, or dispatch
+without the named key. Or run the reviews by hand: `/plan-ceo-review`,
+`/plan-devex-review`, then `/plan-eng-review`.
 
 ## Retry denials
 
