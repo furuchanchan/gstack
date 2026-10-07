@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * gstack-global-discover — Discover AI coding sessions across Claude Code, Codex CLI, and Gemini CLI.
+ * gstack-global-discover — Discover AI coding sessions across Claude Code, Codex CLI, Gemini CLI,
+ * Kimi Code, and OMP.
  * Resolves each session's working directory to a git repo, deduplicates by normalized remote URL,
  * and outputs structured JSON to stdout.
  *
@@ -17,8 +18,10 @@ import { canonicalRemote } from "../lib/remote-identity";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+type ToolId = "claude_code" | "codex" | "gemini" | "kimi_code" | "omp";
+
 interface Session {
-  tool: "claude_code" | "codex" | "gemini";
+  tool: ToolId;
   cwd: string;
 }
 
@@ -26,18 +29,14 @@ interface Repo {
   name: string;
   remote: string;
   paths: string[];
-  sessions: { claude_code: number; codex: number; gemini: number };
+  sessions: Record<ToolId, number>;
 }
 
 interface DiscoveryResult {
   window: string;
   start_date: string;
   repos: Repo[];
-  tools: {
-    claude_code: { total_sessions: number; repos: number };
-    codex: { total_sessions: number; repos: number };
-    gemini: { total_sessions: number; repos: number };
-  };
+  tools: Record<ToolId, { total_sessions: number; repos: number }>;
   total_sessions: number;
   total_repos: number;
 }
@@ -437,6 +436,153 @@ function scanGemini(since: Date): Session[] {
   return sessions;
 }
 
+function scanKimiCode(since: Date): Session[] {
+  // Kimi Code: ~/.kimi-code/session_index.jsonl lists one session per line as
+  // { sessionId, sessionDir, workDir }; sessions/<ws>/<sid>/state.json carries
+  // updatedAt (epoch ms) and cwd. workDir is already absolute, so repo
+  // attribution needs no path decoding.
+  const root = process.env.KIMI_CODE_HOME || join(homedir(), ".kimi-code");
+  const indexPath = join(root, "session_index.jsonl");
+  if (!existsSync(indexPath)) return [];
+
+  let lines: string[];
+  try {
+    lines = readFileSync(indexPath, { encoding: "utf-8" }).split("\n").filter((l) => l.trim());
+  } catch (err: any) {
+    if (err?.code === 'ENOENT' || err?.code === 'EACCES') return [];
+    throw err;
+  }
+
+  const sessions: Session[] = [];
+  for (const line of lines) {
+    let entry: { sessionDir?: string; workDir?: string };
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      console.error("Warning: could not parse a Kimi Code session_index line");
+      continue;
+    }
+    if (typeof entry.sessionDir !== "string" || entry.sessionDir.length === 0) continue;
+    const sessionDir = entry.sessionDir.startsWith("/")
+      ? entry.sessionDir
+      : join(root, entry.sessionDir);
+
+    // Window filter: state.json's updatedAt; fall back to the dir mtime when
+    // the state file is absent or unreadable.
+    let lastActivity: number | null = null;
+    let stateCwd: string | null = null;
+    try {
+      const state = JSON.parse(readFileSync(join(sessionDir, "state.json"), { encoding: "utf-8" }));
+      if (typeof state.updatedAt === "number") lastActivity = state.updatedAt;
+      else if (typeof state.createdAt === "number") lastActivity = state.createdAt;
+      if (typeof state.cwd === "string") stateCwd = state.cwd;
+    } catch {
+      try {
+        lastActivity = statSync(sessionDir).mtimeMs;
+      } catch {
+        continue;
+      }
+    }
+    if (lastActivity === null || lastActivity < since.getTime()) continue;
+
+    const cwd = entry.workDir || stateCwd;
+    if (!cwd || !existsSync(cwd)) continue;
+    sessions.push({ tool: "kimi_code", cwd });
+  }
+
+  return sessions;
+}
+
+// OMP names session files <ISO8601-with-dashes>_<uuid>.jsonl — the timestamp's
+// colons are written as dashes: 2026-09-16T01-57-23Z_<uuid>.jsonl
+const OMP_TS_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(\.\d+)?(Z|[+-]\d{2}-?\d{2})?/;
+
+function ompSessionStart(fileName: string): number | null {
+  const m = fileName.match(OMP_TS_RE);
+  if (!m) return null;
+  const iso = `${m[1]}T${m[2]}:${m[3]}:${m[4]}${m[5] ?? ""}${m[6] ? m[6].replace("-", ":") : "Z"}`;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
+function scanOmp(since: Date): Session[] {
+  // OMP: ~/.omp/agent/sessions/<workspace-dir>/<ISO>_<uuid>.jsonl. Workspace
+  // dir names collapse path separators, so the cwd comes from inside the
+  // session file. Note ~/.omp/logs is deliberately NOT scanned — OMP writes a
+  // per-launch log even when no session is created.
+  const sessionsRoot = process.env.OMP_SESSIONS_DIR || join(homedir(), ".omp", "agent", "sessions");
+  if (!existsSync(sessionsRoot)) return [];
+
+  const sessions: Session[] = [];
+
+  let workspaces: string[];
+  try {
+    workspaces = readdirSync(sessionsRoot);
+  } catch (err: any) {
+    if (err?.code === 'ENOENT' || err?.code === 'EACCES') return [];
+    throw err;
+  }
+
+  for (const ws of workspaces) {
+    const wsDir = join(sessionsRoot, ws);
+    try {
+      if (!statSync(wsDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+
+    let files: string[];
+    try {
+      files = readdirSync(wsDir).filter((f) => f.endsWith(".jsonl"));
+    } catch {
+      continue;
+    }
+
+    for (const file of files) {
+      const filePath = join(wsDir, file);
+      // The filename timestamp is the window filter; fall back to mtime for
+      // nonconforming names.
+      let started = ompSessionStart(file);
+      if (started === null) {
+        try {
+          started = statSync(filePath).mtimeMs;
+        } catch {
+          continue;
+        }
+      }
+      if (started < since.getTime()) continue;
+
+      const cwd = extractCwdFromJsonl(filePath);
+      if (!cwd || !existsSync(cwd)) continue;
+      sessions.push({ tool: "omp", cwd });
+    }
+  }
+
+  return sessions;
+}
+
+// ── Scanner registry ───────────────────────────────────────────────────────
+// Adding a store is one entry here plus a scanner — every count, sort key,
+// per-repo total and summary line derives from this list, and every
+// registered tool reports its count (including zero) so a missing store is
+// visibly empty rather than silently absent.
+
+const SCANNERS: { id: ToolId; label: string; scan: (since: Date) => Session[] }[] = [
+  { id: "claude_code", label: "CC",     scan: scanClaudeCode },
+  { id: "codex",       label: "Codex",  scan: scanCodex },
+  { id: "gemini",      label: "Gemini", scan: scanGemini },
+  { id: "kimi_code",   label: "Kimi",   scan: scanKimiCode },
+  { id: "omp",         label: "OMP",    scan: scanOmp },
+];
+
+function zeroCounts(): Record<ToolId, number> {
+  return Object.fromEntries(SCANNERS.map((s) => [s.id, 0])) as Record<ToolId, number>;
+}
+
+function totalSessions(counts: Record<ToolId, number>): number {
+  return SCANNERS.reduce((n, s) => n + counts[s.id], 0);
+}
+
 // ── Deduplication ──────────────────────────────────────────────────────────
 
 async function resolveAndDeduplicate(sessions: Session[]): Promise<Repo[]> {
@@ -493,7 +639,7 @@ async function resolveAndDeduplicate(sessions: Session[]): Promise<Repo[]> {
       }
     }
 
-    const sessionCounts = { claude_code: 0, codex: 0, gemini: 0 };
+    const sessionCounts = zeroCounts();
     for (const s of data.sessions) {
       sessionCounts[s.tool]++;
     }
@@ -507,11 +653,7 @@ async function resolveAndDeduplicate(sessions: Session[]): Promise<Repo[]> {
   }
 
   // Sort by total sessions descending
-  repos.sort(
-    (a, b) =>
-      b.sessions.claude_code + b.sessions.codex + b.sessions.gemini -
-      (a.sessions.claude_code + a.sessions.codex + a.sessions.gemini)
-  );
+  repos.sort((a, b) => totalSessions(b.sessions) - totalSessions(a.sessions));
 
   return repos;
 }
@@ -523,16 +665,15 @@ async function main() {
   const sinceDate = windowToDate(since);
   const startDate = sinceDate.toISOString().split("T")[0];
 
-  // Run all scanners
-  const ccSessions = scanClaudeCode(sinceDate);
-  const codexSessions = scanCodex(sinceDate);
-  const geminiSessions = scanGemini(sinceDate);
+  // Run all registered scanners
+  const byTool = new Map<ToolId, Session[]>();
+  for (const s of SCANNERS) byTool.set(s.id, s.scan(sinceDate));
+  const allSessions = SCANNERS.flatMap((s) => byTool.get(s.id)!);
 
-  const allSessions = [...ccSessions, ...codexSessions, ...geminiSessions];
-
-  // Summary to stderr
+  // Summary to stderr — every registered tool reports its count, including
+  // zeros, so an absent store is visibly empty rather than silently missing.
   console.error(
-    `Discovered: ${ccSessions.length} CC sessions, ${codexSessions.length} Codex sessions, ${geminiSessions.length} Gemini sessions`
+    `Discovered: ${SCANNERS.map((s) => `${byTool.get(s.id)!.length} ${s.label}`).join(", ")} sessions`
   );
 
   // Deduplicate
@@ -541,19 +682,19 @@ async function main() {
   console.error(`→ ${repos.length} unique repos`);
 
   // Count per-tool repo counts
-  const ccRepos = new Set(repos.filter((r) => r.sessions.claude_code > 0).map((r) => r.remote)).size;
-  const codexRepos = new Set(repos.filter((r) => r.sessions.codex > 0).map((r) => r.remote)).size;
-  const geminiRepos = new Set(repos.filter((r) => r.sessions.gemini > 0).map((r) => r.remote)).size;
+  const tools = {} as DiscoveryResult["tools"];
+  for (const s of SCANNERS) {
+    tools[s.id] = {
+      total_sessions: byTool.get(s.id)!.length,
+      repos: new Set(repos.filter((r) => r.sessions[s.id] > 0).map((r) => r.remote)).size,
+    };
+  }
 
   const result: DiscoveryResult = {
     window: since,
     start_date: startDate,
     repos,
-    tools: {
-      claude_code: { total_sessions: ccSessions.length, repos: ccRepos },
-      codex: { total_sessions: codexSessions.length, repos: codexRepos },
-      gemini: { total_sessions: geminiSessions.length, repos: geminiRepos },
-    },
+    tools,
     total_sessions: allSessions.length,
     total_repos: repos.length,
   };
@@ -563,16 +704,14 @@ async function main() {
   } else {
     // Summary format
     console.log(`Window: ${since} (since ${startDate})`);
-    console.log(`Sessions: ${allSessions.length} total (CC: ${ccSessions.length}, Codex: ${codexSessions.length}, Gemini: ${geminiSessions.length})`);
+    console.log(`Sessions: ${allSessions.length} total (${SCANNERS.map((s) => `${s.label}: ${byTool.get(s.id)!.length}`).join(", ")})`);
     console.log(`Repos: ${repos.length} unique`);
     console.log("");
     for (const repo of repos) {
-      const total = repo.sessions.claude_code + repo.sessions.codex + repo.sessions.gemini;
-      const tools = [];
-      if (repo.sessions.claude_code > 0) tools.push(`CC:${repo.sessions.claude_code}`);
-      if (repo.sessions.codex > 0) tools.push(`Codex:${repo.sessions.codex}`);
-      if (repo.sessions.gemini > 0) tools.push(`Gemini:${repo.sessions.gemini}`);
-      console.log(`  ${repo.name} (${total} sessions) — ${tools.join(", ")}`);
+      const total = totalSessions(repo.sessions);
+      const repoTools = SCANNERS.filter((s) => repo.sessions[s.id] > 0)
+        .map((s) => `${s.label}:${repo.sessions[s.id]}`);
+      console.log(`  ${repo.name} (${total} sessions) — ${repoTools.join(", ")}`);
       console.log(`    Remote: ${repo.remote}`);
       console.log(`    Paths: ${repo.paths.join(", ")}`);
     }

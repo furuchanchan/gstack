@@ -311,6 +311,8 @@ describe("gstack-global-discover", () => {
         expect(repo.sessions).toHaveProperty("claude_code");
         expect(repo.sessions).toHaveProperty("codex");
         expect(repo.sessions).toHaveProperty("gemini");
+        expect(repo.sessions).toHaveProperty("kimi_code");
+        expect(repo.sessions).toHaveProperty("omp");
       }
     });
 
@@ -322,11 +324,11 @@ describe("gstack-global-discover", () => {
       );
       const json = JSON.parse(result.stdout);
 
-      // Total sessions should equal sum across tools
-      const toolTotal =
-        json.tools.claude_code.total_sessions +
-        json.tools.codex.total_sessions +
-        json.tools.gemini.total_sessions;
+      // Total sessions should equal sum across every registered tool
+      const toolTotal = Object.values(json.tools).reduce(
+        (n: number, t: any) => n + t.total_sessions,
+        0
+      );
       expect(json.total_sessions).toBe(toolTotal);
     });
 
@@ -430,6 +432,127 @@ describe("gstack-global-discover", () => {
       const good = JSON.stringify({ cwd: "/tmp/repo-skip-bad" });
       writeFileSync(filePath, "{ not valid json\n" + good + "\n");
       expect(extractCwdFromJsonl(filePath)).toBe("/tmp/repo-skip-bad");
+    });
+  });
+
+  describe("kimi_code + omp stores (#2917)", () => {
+    let tmpDir: string;
+    let repoDir: string;
+
+    beforeEach(() => {
+      tmpDir = mkdtempSync(join(tmpdir(), "gstack-newtools-"));
+      repoDir = join(tmpDir, "fake-repo");
+      mkdirSync(repoDir);
+      spawnSync("git", ["init"], { cwd: repoDir, stdio: "pipe", timeout: 30_000 });
+      spawnSync("git", ["commit", "--allow-empty", "-m", "init"], {
+        cwd: repoDir,
+        stdio: "pipe",
+        timeout: 30_000,
+      });
+    });
+
+    afterEach(() => {
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    // All five stores pointed at empty dirs unless the test overrides one —
+    // deterministic zero for tools the test isn't exercising.
+    function runDiscover(env: Record<string, string> = {}) {
+      return spawnSync(
+        "bun",
+        ["run", scriptPath, "--since", "7d", "--format", "json"],
+        {
+          encoding: "utf-8",
+          timeout: 30000,
+          env: {
+            ...process.env,
+            HOME: join(tmpDir, "empty-home"),
+            CODEX_SESSIONS_DIR: join(tmpDir, "no-codex"),
+            KIMI_CODE_HOME: join(tmpDir, "no-kimi"),
+            OMP_SESSIONS_DIR: join(tmpDir, "no-omp"),
+            ...env,
+          },
+        }
+      );
+    }
+
+    function writeKimiFixture(updatedAt: number): string {
+      const kimiHome = join(tmpDir, "kimi-home");
+      const sessionDir = join(kimiHome, "sessions", "ws1", "s1");
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(kimiHome, "session_index.jsonl"),
+        JSON.stringify({ sessionId: "s1", sessionDir: "sessions/ws1/s1", workDir: repoDir }) + "\n"
+      );
+      writeFileSync(
+        join(sessionDir, "state.json"),
+        JSON.stringify({ cwd: repoDir, createdAt: updatedAt - 60_000, updatedAt })
+      );
+      return kimiHome;
+    }
+
+    function ompFileName(iso: Date): string {
+      return `${iso.toISOString().slice(0, 19).replace(/:/g, "-")}Z_${crypto.randomUUID()}.jsonl`;
+    }
+
+    function writeOmpFixture(sessionsRoot: string, name: string): void {
+      const wsDir = join(sessionsRoot, "-tmp-fake-repo");
+      mkdirSync(wsDir, { recursive: true });
+      writeFileSync(
+        join(wsDir, name),
+        JSON.stringify({ timestamp: new Date().toISOString(), cwd: repoDir }) + "\n"
+      );
+    }
+
+    test("discovers a Kimi Code session via session_index + state.json", () => {
+      const kimiHome = writeKimiFixture(Date.now());
+      const result = runDiscover({ KIMI_CODE_HOME: kimiHome });
+      expect(result.status).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.tools.kimi_code.total_sessions).toBe(1);
+      expect(json.total_sessions).toBe(1);
+      const repo = json.repos.find((r: any) => r.name === "fake-repo");
+      expect(repo.sessions.kimi_code).toBe(1);
+    });
+
+    test("Kimi session with a stale state.json updatedAt is outside the window", () => {
+      const kimiHome = writeKimiFixture(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const result = runDiscover({ KIMI_CODE_HOME: kimiHome });
+      expect(result.status).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.tools.kimi_code.total_sessions).toBe(0);
+    });
+
+    test("discovers an OMP session via filename timestamp + recorded cwd", () => {
+      const ompRoot = join(tmpDir, "omp-sessions");
+      writeOmpFixture(ompRoot, ompFileName(new Date()));
+      const result = runDiscover({ OMP_SESSIONS_DIR: ompRoot });
+      expect(result.status).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.tools.omp.total_sessions).toBe(1);
+      const repo = json.repos.find((r: any) => r.name === "fake-repo");
+      expect(repo.sessions.omp).toBe(1);
+    });
+
+    test("OMP session outside the window is excluded by its filename timestamp", () => {
+      const ompRoot = join(tmpDir, "omp-sessions");
+      writeOmpFixture(ompRoot, ompFileName(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)));
+      const result = runDiscover({ OMP_SESSIONS_DIR: ompRoot });
+      expect(result.status).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.tools.omp.total_sessions).toBe(0);
+    });
+
+    test("every registered tool reports its count, including zeros", () => {
+      const result = runDiscover();
+      expect(result.status).toBe(0);
+      const json = JSON.parse(result.stdout);
+      for (const tool of ["claude_code", "codex", "gemini", "kimi_code", "omp"]) {
+        expect(json.tools).toHaveProperty(tool);
+        expect(json.tools[tool].total_sessions).toBe(0);
+      }
+      expect(result.stderr).toContain("0 Kimi");
+      expect(result.stderr).toContain("0 OMP");
     });
   });
 });

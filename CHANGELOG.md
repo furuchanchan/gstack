@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.91.36.0] - 2026-10-08
+
+**/retro global now sees Kimi Code and OMP sessions, and a tool with zero sessions is reported instead of being invisible.**
+
+`gstack-global-discover` scanned only `~/.claude/projects`, `~/.codex/sessions` and `~/.gemini`, so a week that included Kimi Code or OMP sessions undercounted them with no "0 sessions" line to notice — the same class of miss as the Antigravity gap in #1977. The scanner list is now a registry: adding a store is one entry plus a scanner, and every registered tool reports its count (including zero) in the stderr line, the JSON `tools` object and the summary output.
+
+### What changes for you
+
+- **Kimi Code sessions are discovered.** `~/.kimi-code/session_index.jsonl` provides each session's absolute `workDir`; `sessions/<ws>/<sid>/state.json`'s `updatedAt` decides the window (dir mtime fallback).
+- **OMP sessions are discovered.** `~/.omp/agent/sessions/<workspace>/<ISO>_<uuid>.jsonl` — the filename timestamp is the window filter and the cwd is read from inside the session file, since the workspace dir name collapses path separators. `~/.omp/logs` is deliberately not scanned: OMP writes a per-launch log even when no session exists.
+- **Zero is visible.** `Discovered: 34 CC, 178 Codex, 0 Gemini, 0 Kimi, 0 OMP sessions` — a missing or empty store is distinguishable from a store the tool never checked.
+- `KIMI_CODE_HOME` and `OMP_SESSIONS_DIR` override the store locations (same pattern as `CODEX_SESSIONS_DIR`).
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**
