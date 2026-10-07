@@ -166,6 +166,14 @@ export function getActivityAfter(afterId: number): {
   totalAdded: number;
 } {
   const total = activityBuffer.totalAdded;
+
+  // A cursor at or past the newest emitted id has nothing to replay — skip
+  // the O(capacity) ring copy entirely (covers future cursors too: they
+  // filtered to [] anyway).
+  if (afterId !== 0 && afterId >= nextId - 1) {
+    return { entries: [], gap: false, totalAdded: total };
+  }
+
   const allEntries = activityBuffer.toArray();
 
   if (afterId === 0) {
@@ -196,6 +204,13 @@ export function getActivityHistory(limit: number = 50): {
   entries: ActivityEntry[];
   totalAdded: number;
 } {
+  // Positive integer limits (the only shape the route issues) read the tail
+  // directly — O(limit) instead of copying the whole ring then slicing.
+  // Every other value keeps the historical path byte-for-byte, quirks
+  // included (limit=0 returns everything, negatives drop a prefix).
+  if (Number.isInteger(limit) && limit > 0) {
+    return { entries: activityBuffer.last(limit), totalAdded: activityBuffer.totalAdded };
+  }
   const allEntries = activityBuffer.toArray();
   const sliced = limit < allEntries.length ? allEntries.slice(-limit) : allEntries;
   return { entries: sliced, totalAdded: activityBuffer.totalAdded };

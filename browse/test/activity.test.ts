@@ -118,3 +118,90 @@ describe('subscribe', () => {
     expect(received.filter(e => e.command === 'should-not-see').length).toBe(0);
   });
 });
+
+import { CircularBuffer } from '../src/buffers';
+
+/** Count toArray calls around fn — the fast paths must not copy the ring. */
+function countToArrayCalls<T>(fn: () => T): { result: T; calls: number } {
+  const original = CircularBuffer.prototype.toArray;
+  let calls = 0;
+  CircularBuffer.prototype.toArray = function (this: CircularBuffer<unknown>) {
+    calls++;
+    return original.call(this);
+  };
+  try {
+    return { result: fn(), calls };
+  } finally {
+    CircularBuffer.prototype.toArray = original;
+  }
+}
+
+describe('getActivityAfter — caught-up fast path (#2973)', () => {
+  it('a cursor at the newest id returns empty without copying the ring', () => {
+    const last = emitActivity({ type: 'command_start', command: 'caught-up' });
+    const { result, calls } = countToArrayCalls(() => getActivityAfter(last.id));
+    expect(result.entries).toEqual([]);
+    expect(result.gap).toBe(false);
+    expect(result.totalAdded).toBeGreaterThan(0);
+    expect(calls).toBe(0);
+  });
+
+  it('a future cursor also returns empty without copying', () => {
+    const last = emitActivity({ type: 'command_start', command: 'future' });
+    const { result, calls } = countToArrayCalls(() => getActivityAfter(last.id + 999));
+    expect(result.entries).toEqual([]);
+    expect(result.gap).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it('a stale cursor still replays new entries and detects gaps', () => {
+    const e1 = emitActivity({ type: 'command_start', command: 'stale-1' });
+    const e2 = emitActivity({ type: 'command_start', command: 'stale-2' });
+    const { result, calls } = countToArrayCalls(() => getActivityAfter(e1.id));
+    expect(result.entries.map(e => e.id)).toContain(e2.id);
+    expect(calls).toBe(1);
+    // Pre-buffer cursor keeps the gap contract.
+    const gap = getActivityAfter(-5);
+    expect(gap.gap).toBe(true);
+    expect(gap.availableFrom).toBeDefined();
+  });
+
+  it('cursor 0 still returns the full buffer via the copy path', () => {
+    const { result, calls } = countToArrayCalls(() => getActivityAfter(0));
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(calls).toBe(1);
+  });
+});
+
+describe('getActivityHistory — tail read for positive integer limits (#2973)', () => {
+  it('returns the last N entries in order without copying the ring', () => {
+    const a = emitActivity({ type: 'command_start', command: 'tail-a' });
+    const b = emitActivity({ type: 'command_start', command: 'tail-b' });
+    const { result, calls } = countToArrayCalls(() => getActivityHistory(2));
+    expect(result.entries.map(e => e.id)).toEqual([a.id, b.id]);
+    expect(calls).toBe(0);
+  });
+
+  it('a limit above the size returns everything via the same fast path', () => {
+    const first = emitActivity({ type: 'command_start', command: 'small-buffer' });
+    const { result, calls } = countToArrayCalls(() => getActivityHistory(5000));
+    expect(result.entries.some(e => e.id === first.id)).toBe(true);
+    expect(calls).toBe(0);
+  });
+
+  it('limit=0 keeps the historical everything-back contract', () => {
+    const { result, calls } = countToArrayCalls(() => getActivityHistory(0));
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(calls).toBe(1);
+  });
+
+  it('negative and non-integer limits keep the old slice path', () => {
+    emitActivity({ type: 'command_start', command: 'neg-limit' });
+    const neg = getActivityHistory(-1);
+    expect(neg.entries.length).toBeGreaterThan(0);
+    const frac = getActivityHistory(2.7);
+    expect(frac.entries.length).toBe(2);
+    const nan = getActivityHistory(Number.NaN);
+    expect(nan.entries.length).toBeGreaterThan(0);
+  });
+});
