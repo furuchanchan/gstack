@@ -94,6 +94,21 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
     expect(section).toContain('GSTACK_STEP_OK');
   });
 
+  // #3064: silent failure modes that previously read as app failures — a bare
+  // [error is a non-serializable evaluate return, and an [ok with no sentinel is
+  // a top-level return / parse abort, not success.
+  test('silent failure modes are named, not mistaken for app failures', () => {
+    expect(section).toContain('A bare `[error` with no text is first a return-value problem');
+    expect(section).toContain('check the target system before calling the page broken');
+    expect(section).toContain('`[ok` after a very short run with no sentinel is a parse or early-exit abort');
+    expect(section).toContain('never a top-level `return`');
+    expect(section).toContain('`evaluate` returns only JSON-serializable values');
+    expect(section).toContain('`pg.locator(sel).press("Enter")`');
+    expect(section).not.toMatch(/`pg\.press\(/);
+    expect(section).toContain('capture the triggering request');
+    expect(section).toContain("read a toggle element's state");
+  });
+
   test('artifact handoff goes through the printed session directory', () => {
     expect(section).toContain('ASIDE_DIR=');
     expect(section).toContain('never print image data');

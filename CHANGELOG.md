@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.91.43.0] - 2026-10-07
+
+**The browser cookbook now names its three silent failure modes, so a probe artifact stops reading as an app bug.** Three gaps each produced a wrong conclusion about a healthy page: a non-serializable `evaluate` return aborts the script with a bare `[error` *after* the action already ran; a top-level `return` ends the script at `[ok` with no sentinel and no output; and an empty DOM read after a click is a statement about the selector, not the app. The shared contract and the cookbook now say so: `evaluate` returns only JSON-serializable values (end side-effect calls with `; return true`), abort paths are written as if/else (never a top-level `return`), key presses go through `locator(...).press()`, a bare `[error` is a return-value problem first — check the target system before calling the page broken — and an empty read after an action means capture the triggering response and check the screenshot before reporting.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**
