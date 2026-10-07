@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.91.41.0] - 2026-10-09
+
+**`--migrate` now merges a surviving `builder-profile.jsonl` instead of no-oping.**
+
+When `developer-profile.json` already exists, `--migrate` used to print
+"already migrated" and return — but the #1677 window left an auto-created stub
+in place before the first legacy write, so every user in that window kept a
+richer `builder-profile.jsonl` (signals, assignments, design docs, resources)
+that nothing would ever import (#2657). A surviving legacy file now means
+pending rows: the entries are merged into `sessions[]` deduped on
+date+project_slug+mode, `signals_accumulated`/`resources_shown`/`topics` are
+recomputed over the union, and the legacy file is archived. Run before
+`--reconcile`, this restores the full history the timeline backfill can't.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

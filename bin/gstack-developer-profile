@@ -57,8 +57,68 @@ do_migrate() {
   fi
 
   if [ -f "$PROFILE_FILE" ]; then
-    # Already migrated — no-op (idempotent).
-    echo "MIGRATE: already migrated (developer-profile.json exists)"
+    # A surviving legacy file means rows the profile never saw: the #1677
+    # window left an auto-created stub in place before the first legacy
+    # write, so an existence check alone stranded those users forever.
+    # Merge the legacy rows in (deduped) instead of no-oping (#2657).
+    local TMPOUT
+    TMPOUT=$(mktemp "$GSTACK_HOME/developer-profile.json.tmp.XXXXXX")
+    trap 'rm -f "$TMPOUT"' EXIT
+
+    local COUNTS
+    COUNTS=$(PROFILE_FILE_PATH="$PROFILE_FILE" LEGACY_PATH="$LEGACY_FILE" TMPOUT_PATH="$TMPOUT" bun -e "
+      const fs = require('fs');
+      const profile = JSON.parse(fs.readFileSync(process.env.PROFILE_FILE_PATH, 'utf-8'));
+      const lines = fs.readFileSync(process.env.LEGACY_PATH, 'utf-8').trim().split('\n').filter(Boolean);
+      const sessions = profile.sessions = profile.sessions || [];
+      const seen = new Set(sessions.map(e => [e.date, e.project_slug, e.mode].join('|')));
+      let added = 0, skipped = 0;
+      for (const line of lines) {
+        try {
+          const e = JSON.parse(line);
+          const key = [e.date, e.project_slug, e.mode].join('|');
+          if (seen.has(key)) { skipped++; continue; }
+          seen.add(key);
+          sessions.push(e);
+          added++;
+        } catch {}
+      }
+      const signalsAcc = {};
+      const resources = new Set();
+      const topics = new Set();
+      for (const e of sessions) {
+        for (const s of (e.signals || [])) signalsAcc[s] = (signalsAcc[s] || 0) + 1;
+        for (const r of (e.resources_shown || [])) resources.add(r);
+        for (const t of (e.topics || [])) topics.add(t);
+      }
+      profile.signals_accumulated = signalsAcc;
+      profile.resources_shown = Array.from(resources);
+      profile.topics = Array.from(topics);
+      fs.writeFileSync(process.env.TMPOUT_PATH, JSON.stringify(profile, null, 2));
+      console.log('added=' + added + ' skipped=' + skipped);
+    ") || { rm -f "$TMPOUT"; trap - EXIT; echo "MIGRATE: merge failed — profile left untouched" >&2; return 1; }
+
+    if [ ! -s "$TMPOUT" ]; then
+      rm -f "$TMPOUT"
+      trap - EXIT
+      echo "MIGRATE: merge produced no output — profile left untouched" >&2
+      return 1
+    fi
+
+    mv "$TMPOUT" "$PROFILE_FILE"
+    trap - EXIT
+
+    local ADDED SKIPPED
+    ADDED=$(echo "$COUNTS" | sed -n 's/.*added=\([0-9]*\).*/\1/p')
+    SKIPPED=$(echo "$COUNTS" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')
+
+    "$SCRIPT_DIR/gstack-brain-enqueue" "developer-profile.json" 2>/dev/null &
+
+    local TS
+    TS="$(date +%Y-%m-%d-%H%M%S)"
+    mv "$LEGACY_FILE" "$LEGACY_FILE.migrated-$TS"
+
+    echo "MIGRATE: merged ${ADDED:-?} session entries from legacy file (${SKIPPED:-0} already present)"
     return 0
   fi
 

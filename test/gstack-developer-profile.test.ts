@@ -180,6 +180,79 @@ describe('gstack-developer-profile --migrate', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('no legacy file');
   });
+
+  // #2657 (dipbazz sub-issue): the #1677 window left an auto-created stub
+  // developer-profile.json before the first legacy write, so the existence
+  // check stranded the richer builder-profile.jsonl forever.
+  test('merges legacy rows into an existing stub profile instead of no-oping', () => {
+    runDev('--read'); // creates the stub, mirroring the stranding window
+    writeLegacyProfile([
+      {
+        date: '2026-04-23T23:55:00Z',
+        mode: 'startup',
+        project_slug: 'alpha',
+        signals: ['taste', 'pushback'],
+        resources_shown: ['https://a.example'],
+        topics: ['fit'],
+        design_doc: '/tmp/a.md',
+        assignment: 'interview 5',
+      },
+      {
+        date: '2026-05-02T10:00:00Z',
+        mode: 'builder',
+        project_slug: 'alpha',
+        signals: ['taste'],
+        resources_shown: [],
+        topics: ['iter'],
+        design_doc: '/tmp/b.md',
+        assignment: 'ship v1',
+      },
+    ]);
+
+    const r = runDev('--migrate');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('MIGRATE: merged 2 session entries');
+
+    const p = readProfile() as any;
+    expect(p.sessions.length).toBe(2);
+    expect(p.signals_accumulated.taste).toBe(2);
+    expect(p.resources_shown).toContain('https://a.example');
+
+    const read = runDev('--read');
+    expect(read.stdout).toContain('SESSION_COUNT: 2');
+    expect(read.stdout).toContain('TIER: welcome_back');
+    expect(read.stdout).toContain('LAST_ASSIGNMENT: ship v1');
+
+    // legacy file archived, second run reports nothing to merge
+    expect(fs.existsSync(path.join(tmpHome, 'builder-profile.jsonl'))).toBe(false);
+    expect(runDev('--migrate').stdout).toContain('no legacy file');
+  });
+
+  test('merge dedupes on date+slug+mode and keeps profile-only data', () => {
+    runDev(
+      '--log-session',
+      JSON.stringify({
+        date: '2026-06-01T00:00:00Z',
+        mode: 'startup',
+        project_slug: 'beta',
+        signals: ['agency'],
+        design_doc: '/tmp/c.md',
+        assignment: 'keep me',
+      }),
+    );
+    writeLegacyProfile([
+      { date: '2026-06-01T00:00:00Z', mode: 'startup', project_slug: 'beta', signals: ['agency'] },
+      { date: '2026-06-02T00:00:00Z', mode: 'startup', project_slug: 'beta', signals: ['named_users'], assignment: 'new row' },
+    ]);
+
+    const r = runDev('--migrate');
+    expect(r.stdout).toContain('MIGRATE: merged 1 session entries from legacy file (1 already present)');
+
+    const p = readProfile() as any;
+    expect(p.sessions.length).toBe(2);
+    expect(p.signals_accumulated.agency).toBe(1);
+    expect(p.signals_accumulated.named_users).toBe(1);
+  });
 });
 
 // -----------------------------------------------------------------------
