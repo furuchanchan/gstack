@@ -14,6 +14,10 @@
  * The direction that matters most is the LAST describe block: narrowing the
  * range must not narrow COVERAGE. A secret in a new commit, or introduced while
  * resolving a merge, still has to be seen.
+ *
+ * Fixture pushes carry `--no-verify`: they seed remote state, and the hook
+ * under test is invoked explicitly — a host's ambient `core.hooksPath` must
+ * not decide whether the fixture even builds.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { spawnSync } from "child_process";
@@ -87,10 +91,10 @@ function setUpRemoteWithForeignFixture(): void {
   const remote = mkdtempSync(join(tmpdir(), "gstack-prepush-remote-"));
   run(["init", "-q", "--bare", "-b", "main"], remote);
   run(["remote", "add", "origin", remote]);
-  run(["push", "-q", "origin", "main"]);
+  run(["push", "-q", "--no-verify", "origin", "main"]);
   // Someone else lands a placeholder connection string on main.
   commit("fixtures/db.ts", `export const URL = "${FAKE_DB_URL}";\n`, "someone else's fixture");
-  run(["push", "-q", "origin", "main"]);
+  run(["push", "-q", "--no-verify", "origin", "main"]);
   run(["fetch", "-q", "origin"]);
 }
 
@@ -143,7 +147,7 @@ describe("narrowing the range does not narrow coverage", () => {
     commit("conflict.txt", "mine\n", "mine");
     run(["checkout", "-q", "main"]);
     commit("conflict.txt", "theirs\n", "theirs");
-    run(["push", "-q", "origin", "main"]);
+    run(["push", "-q", "--no-verify", "origin", "main"]);
     run(["fetch", "-q", "origin"]);
     run(["checkout", "-q", "feature"]);
     spawnSync("git", ["merge", "--no-edit", "main"], { cwd: dir, encoding: "utf8", timeout: 30_000 }); // conflicts
@@ -196,10 +200,10 @@ describe("S1: exclusion scoped to the push-target remote", () => {
     const origin = mkdtempSync(join(tmpdir(), "gstack-prepush-origin-"));
     run(["init", "-q", "--bare", "-b", "main"], origin);
     run(["remote", "add", "origin", origin]);
-    run(["push", "-q", "origin", "main"]);
+    run(["push", "-q", "--no-verify", "origin", "main"]);
     run(["checkout", "-q", "-b", "feature"]);
     commit("mine.ts", "export const mine = 1;\n", "my work");
-    run(["push", "-q", "-u", "origin", "feature"]);
+    run(["push", "-q", "--no-verify", "-u", "origin", "feature"]);
     const originTip = run(["rev-parse", "HEAD"]).trim();
 
     const other = mkdtempSync(join(tmpdir(), "gstack-prepush-other-"));
@@ -207,7 +211,7 @@ describe("S1: exclusion scoped to the push-target remote", () => {
     run(["remote", "add", "other", other]);
     run(["checkout", "-q", "-b", "leaky"]);
     commit("leak.ts", `const k = "${FAKE_AWS_OTHERREM}";\n`, "secret to private remote only");
-    run(["push", "-q", "other", "leaky"]);
+    run(["push", "-q", "--no-verify", "other", "leaky"]);
     run(["fetch", "-q", "other"]);
 
     run(["checkout", "-q", "feature"]);
@@ -235,7 +239,7 @@ describe("S1: exclusion scoped to the push-target remote", () => {
     setUpRemoteWithForeignFixture();
     run(["checkout", "-q", "-b", "feature", "HEAD~1"]);
     commit("mine.ts", "export const mine = 1;\n", "my work");
-    run(["push", "-q", "-u", "origin", "feature"]);
+    run(["push", "-q", "--no-verify", "-u", "origin", "feature"]);
     const originTip = run(["rev-parse", "HEAD"]).trim();
     run(["merge", "-q", "--no-edit", "main"]); // catch-up merge brings the foreign fixture
 

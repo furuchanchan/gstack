@@ -78,14 +78,14 @@ const FAKE_AWS_KEY = ["AKIA", "1234567890ABCDEF"].join("");
 function buildRebasedForcePush(): { preRebaseTip: string } {
   git(["checkout", "-q", "-b", "feature"]);
   commit("mine.ts", "export const mine = 1;\n", "my clean work");
-  git(["push", "-q", "-u", "origin", "feature"]);
+  git(["push", "-q", "--no-verify", "-u", "origin", "feature"]);
   const preRebaseTip = git(["rev-parse", "HEAD"]);
 
   // Someone else lands a HIGH-shaped placeholder on main. It is published:
   // pushed to the remote, fetched into origin/main.
   git(["checkout", "-q", "main"]);
   commit("fixtures/foreign.txt", `key ${FAKE_AWS_KEY}\n`, "someone else's fixture");
-  git(["push", "-q", "origin", "main"]);
+  git(["push", "-q", "--no-verify", "origin", "main"]);
   git(["fetch", "-q", "origin"]);
 
   git(["checkout", "-q", "feature"]);
@@ -102,7 +102,7 @@ beforeEach(() => {
   git(["config", "user.name", "T"]);
   commit("README.md", "seed\n", "seed");
   git(["remote", "add", "origin", remote]);
-  git(["push", "-q", "-u", "origin", "main"]);
+  git(["push", "-q", "--no-verify", "-u", "origin", "main"]);
 });
 
 afterEach(() => {
