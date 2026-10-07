@@ -1148,7 +1148,7 @@ EOF
 # browser that cannot launch. GSTACK_SKIP_ASIDE=1 (the library's and the
 # skills' opt-out) counts as Aside absent. Pinned by test/setup-browser-hint.test.ts.
 _browser_hint() {
-  if [ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && command -v aside >/dev/null 2>&1; then
+  if [ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && { command -v aside >/dev/null 2>&1 || [ -x "$HOME/.local/bin/aside" ]; }; then
     if [ -n "${_PW_FAIL_REASON:-}" ]; then
       log "  browser: Aside (primary) — gstack browser fallback unavailable (Chromium bootstrap: ${_PW_FAIL_REASON})"
     else
@@ -4420,7 +4420,7 @@ if [ "${_PW_FAIL_REASON:-}" = "skipped" ]; then
 elif [ -n "${_PW_FAIL_REASON:-}" ]; then
   log ""
   log "Browser unavailable: Chromium bootstrap did not complete ($_PW_FAIL_REASON)."
-  if [ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && command -v aside >/dev/null 2>&1; then
+  if [ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && { command -v aside >/dev/null 2>&1 || [ -x "$HOME/.local/bin/aside" ]; }; then
     # Aside is the primary driver; the bundled browser is its fallback. Say so,
     # instead of telling an Aside user their browser skills are gone.
     log "  Aside is installed, so $_PW_ASIDE_SKILLS keep running there; only their bundled fallback is missing."

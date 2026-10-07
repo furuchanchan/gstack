@@ -74,21 +74,46 @@ export type AsideProbe =
   | { ok: true; version: string }
   | { ok: false; reason: 'NEEDS_ASIDE' | 'ASIDE_NOT_RUNNING'; detail: string };
 
+/** The installer's default CLI location — not on the default macOS login PATH. */
+function asideLocalBin(): string {
+  // $HOME first (same expansion the skills' `~/.local/bin/aside` probe makes);
+  // os.homedir() alone is cached in some runtimes and would pin the first HOME.
+  return path.join(process.env.HOME ?? os.homedir(), '.local', 'bin', 'aside');
+}
+
+/**
+ * Resolve the Aside CLI. PATH first, then `~/.local/bin/aside` — the
+ * installer's own location, absent from the default macOS login PATH (#2902),
+ * so a PATH-only check reports a running, signed-in Aside as not installed.
+ * Returns the invocable name/absolute path, or null when nothing answers.
+ */
+export function resolveAsideBin(): string | null {
+  const onPath = spawnSync('aside', ['--version'], { encoding: 'utf8', timeout: 10_000 });
+  if (!onPath.error) return 'aside';
+  const local = asideLocalBin();
+  if (fs.existsSync(local)) {
+    const direct = spawnSync(local, ['--version'], { encoding: 'utf8', timeout: 10_000 });
+    if (!direct.error) return local;
+  }
+  return null;
+}
+
 /** Same probe the skills run in BROWSER SETUP: binary present, app answering. */
 export function probeAside(timeoutMs = 30_000): AsideProbe {
   if (process.env.GSTACK_SKIP_ASIDE === '1') {
     return { ok: false, reason: 'NEEDS_ASIDE', detail: 'GSTACK_SKIP_ASIDE=1 — Aside skipped by request' };
   }
-  const which = spawnSync('aside', ['--version'], { encoding: 'utf8', timeout: 10_000 });
-  if (which.error) {
-    return { ok: false, reason: 'NEEDS_ASIDE', detail: 'the `aside` CLI is not on PATH — install the Aside browser (macOS 15+) from aside.com' };
+  const bin = resolveAsideBin();
+  if (bin === null) {
+    return { ok: false, reason: 'NEEDS_ASIDE', detail: 'the `aside` CLI is not on PATH (checked ~/.local/bin too) — install the Aside browser (macOS 15+) from aside.com' };
   }
+  const which = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 10_000 });
   if (which.status !== 0) {
     // Present but not answering: the same class the skills' bash probe reports
     // (open or repair the app), never "install it".
-    return { ok: false, reason: 'ASIDE_NOT_RUNNING', detail: `\`aside --version\` exited ${which.status}: ${(which.stderr || which.stdout || '').trim().slice(0, 300) || 'no output'}` };
+    return { ok: false, reason: 'ASIDE_NOT_RUNNING', detail: `\`${bin} --version\` exited ${which.status}: ${(which.stderr || which.stdout || '').trim().slice(0, 300) || 'no output'}` };
   }
-  const probe = spawnSync('aside', ['repl', 'console.log("ASIDE_READY " + pwd)'], { encoding: 'utf8', timeout: timeoutMs });
+  const probe = spawnSync(bin, ['repl', 'console.log("ASIDE_READY " + pwd)'], { encoding: 'utf8', timeout: timeoutMs });
   const out = `${probe.stdout ?? ''}${probe.stderr ?? ''}`;
   if (!/^ASIDE_READY /m.test(out)) {
     return { ok: false, reason: 'ASIDE_NOT_RUNNING', detail: (out.trim() || probe.error?.message || 'no answer from the Aside app').slice(0, 400) };
@@ -353,7 +378,7 @@ async function asideRender(spec: RenderSpec): Promise<RenderResult> {
     const script = buildRenderScript(url, spec);
     // Async spawn: a synchronous wait would block this event loop, and the
     // loopback server above runs on it — Page.navigate would then time out.
-    const proc = await runProc('aside', ['repl', script], (spec.timeoutMs ?? DEFAULT_TIMEOUT_MS) + processSlackMs());
+    const proc = await runProc(resolveAsideBin() ?? 'aside', ['repl', script], (spec.timeoutMs ?? DEFAULT_TIMEOUT_MS) + processSlackMs());
     const stdout = `${proc.stdout}${proc.stderr}`.replace(/\x1b\[[0-9;]*m/g, '');
     const evals: Record<number, string> = {};
     for (const m of stdout.matchAll(/^EVAL (\d+) ([A-Za-z0-9+/=]*)$/gm)) evals[Number(m[1])] = Buffer.from(m[2], 'base64').toString('utf8');

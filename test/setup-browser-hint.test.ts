@@ -41,8 +41,9 @@ function summaryReasonBlock(): string {
   return SETUP_SRC.slice(start, end);
 }
 
-// `command -v aside` is the only probe either site makes; shadow the builtin
-// so the test never depends on whether the machine running it has Aside.
+// `command -v aside` (PATH first, then a `-x ~/.local/bin/aside` check, #2902)
+// is the only probe either site makes; shadow the builtin so the test never
+// depends on whether the machine running it has Aside on PATH.
 const COMMAND_SHADOW = 'command() { if [ "$1" = "-v" ] && [ "$2" = "aside" ]; then [ "$ASIDE_PRESENT" = "1" ]; else builtin command "$@"; fi; }';
 
 function runBash(lines: string[], env: Record<string, string> = {}): string {
@@ -73,7 +74,9 @@ function runHint(opts: SiteOpts): string {
     `_PW_FAIL_REASON=${JSON.stringify(opts.reason)}`,
     extractFn('_browser_hint'),
     '_browser_hint',
-  ], siteEnv(opts));
+    // A nonexistent HOME keeps the ~/.local/bin/aside fallback (#2902) from
+    // depending on the real machine's install state.
+  ], { ...siteEnv(opts), HOME: '/nonexistent-gstack-home' });
 }
 
 function runSummary(opts: SiteOpts): string {
@@ -90,7 +93,7 @@ function runSummary(opts: SiteOpts): string {
     'echo "ASIDE_SKILLS=$_PW_ASIDE_SKILLS"',
     'echo "BROWSER_SKILLS=$_PW_BROWSER_SKILLS"',
     'echo REACHED_END=1',
-  ], siteEnv(opts));
+  ], { ...siteEnv(opts), HOME: '/nonexistent-gstack-home' });
 }
 
 function summaryLists(out: string): { aside: string; browser: string } {
@@ -133,7 +136,9 @@ describe('setup: _browser_hint', () => {
   });
 
   test('static pin: the hint honors the GSTACK_SKIP_ASIDE opt-out before probing for Aside', () => {
-    expect(extractFn('_browser_hint')).toContain('[ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && command -v aside');
+    expect(extractFn('_browser_hint')).toContain('[ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && { command -v aside');
+    // #2902: the installer's own location is probed too, not PATH alone.
+    expect(extractFn('_browser_hint')).toContain('-x "$HOME/.local/bin/aside"');
   });
 
   test('GSTACK_SKIP_ASIDE=1 with Aside on PATH, bootstrap fine → treated as Aside absent: the fallback line, never Aside (primary)', () => {
@@ -216,7 +221,8 @@ describe('setup: Chromium bootstrap summary is Aside-aware', () => {
     // the derived list, never to the Aside-first list.
     expect(asideLine).not.toContain('/pair-agent');
     expect(browserLine).toContain('/pair-agent');
-    expect(block).toContain('[ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && command -v aside');
+    expect(block).toContain('[ "${GSTACK_SKIP_ASIDE:-}" != "1" ] && { command -v aside');
+    expect(block).toContain('-x "$HOME/.local/bin/aside"');
   });
 
   test('runtime: the Aside-absent list is the Aside list plus /pair-agent, and each arm prints its own list verbatim', () => {

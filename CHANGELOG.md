@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.35.0] - 2026-10-08
+
+**An Aside installed the normal way is found again.**
+
+The Aside installer drops its CLI at `~/.local/bin/aside`, which macOS does not put on the default login PATH. The browser probes only asked PATH, so a machine with Aside installed, running and signed in reported `NEEDS_ASIDE` — "download it at aside.com" — and every browsing skill silently fell back to the bundled headless browser, losing the signed-in sessions that are the reason to use Aside. The probes now try PATH first and then the installer's own location, in the render/probe library and in `./setup`'s browser hint. A genuinely absent Aside still reports `NEEDS_ASIDE` as before; a CLI that answers `--version` but not the app still reports `ASIDE_NOT_RUNNING`.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**
