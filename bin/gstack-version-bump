@@ -67,13 +67,17 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+  buildMetadata,
   extractVersion,
   isJsonVersionPath,
+  isPubspecVersionPath,
   noVersionNotice,
   npmVersion,
   resolveVersionRel as resolvePinnedRel,
   resolveVersionSource,
   setVersionInJson,
+  setVersionInPubspec,
+  withBuild,
   type VersionSource,
 } from "../lib/version-source";
 
@@ -81,7 +85,7 @@ import {
 // MICRO and stays the source of truth, but a repo whose pinned version source
 // is a package.json holds plain 3-digit semver, and rejecting it here meant
 // /ship could not write a version at all in such a repo. See lib/version-source.ts.
-const VERSION_RE = /^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$/;
+const VERSION_RE = /^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(\+[0-9]+)?$/;
 const DEFAULT = "0.0.0.0";
 
 type State = "FRESH" | "ALREADY_BUMPED" | "DRIFT_STALE_PKG" | "DRIFT_UNEXPECTED";
@@ -338,14 +342,20 @@ function cmdClassify(args: string[], cwd: string): void {
   const versionPath = join(cwd, versionRel);
   const current = src.version!;
   const baseV = baseVersion(cwd, base!, versionRel);
-  // When the version-path IS a package.json (#2501), that file is the single
-  // source of truth and the "VERSION vs package.json" drift states cannot
-  // arise — they are the same file. Reporting it as its own pkg keeps DRIFT_*
-  // out of the classification instead of inventing a disagreement between a
-  // file and itself.
+  // When the version-path IS a package.json (#2501) or a pubspec.yaml (#2833),
+  // that file is the single source of truth and the "VERSION vs package.json"
+  // drift states cannot arise — reporting it as its own pkg (or as no pkg at
+  // all for pubspec, whose Flutter repos' package.json is tooling, not a
+  // release identity) keeps DRIFT_* out of the classification instead of
+  // inventing a disagreement.
   const jsonSource = isJsonVersionPath(versionRel);
+  const pubspecSource = isPubspecVersionPath(versionRel);
   const pkgPath = jsonSource ? versionPath : resolvePkgPath(cwd, argVal(args, "--package-json-path"));
-  const pkg = jsonSource ? { exists: true, version: current } : readPkgVersion(pkgPath);
+  const pkg = jsonSource
+    ? { exists: true, version: current }
+    : pubspecSource
+      ? { exists: false, version: "" }
+      : readPkgVersion(pkgPath);
   // Decision 11: the manifest carries the npm-valid 3-digit translation of
   // the 4-digit VERSION; drift is judged against the translated form. A
   // JSON version-path is its own source of truth, so its expected form is
@@ -470,6 +480,35 @@ function cmdWrite(args: string[], cwd: string): void {
     return;
   }
 
+  // A pubspec.yaml version-path (#2833) rewrites only its top-level `version:`
+  // line — the manifest carries the package's whole dependency tree, so the
+  // plain-file write below would destroy it. Like a JSON source it is its own
+  // single truth: no package.json mirror is written (a Flutter repo's
+  // package.json, when it exists, is tooling, not the release identity).
+  if (isPubspecVersionPath(versionRel)) {
+    // A bumped version arriving without +<build> (gstack-next-version emits
+    // numeric-only) must not silently strip the app's build identity — carry
+    // the file's own suffix forward. An explicit +N in --version wins.
+    const effective = buildMetadata(version!) ? version! : withBuild(version!, buildMetadata(src.version!));
+    try {
+      writeFileSync(versionPath, setVersionInPubspec(readFileSync(versionPath, "utf-8"), effective));
+    } catch (e) {
+      fail(`write: failed to update ${versionRel} (${e instanceof Error ? e.message : "unreadable"}).`, 3);
+    }
+    process.stdout.write(
+      JSON.stringify({
+        wrote: effective,
+        ...(effective !== version ? { requestedVersion: version } : {}),
+        versionPath: versionRel,
+        pubspec: true,
+        packageJson: false,
+        packageLock: false,
+        agentsDigest: null,
+      }) + "\n",
+    );
+    return;
+  }
+
   const pkgPath = resolvePkgPath(cwd, argVal(args, "--package-json-path"));
   const hasPkg = existsSync(pkgPath);
   writeFileSync(versionPath, version + "\n");
@@ -517,10 +556,10 @@ function cmdWrite(args: string[], cwd: string): void {
 function cmdRepair(args: string[], cwd: string): void {
   const versionRel = resolveVersionRel(cwd, argVal(args, "--version-path"));
   const versionPath = join(cwd, versionRel);
-  // Nothing to repair when the version lives in a package.json (#2501): there
-  // is no second file to drift from, and classify never reports DRIFT_* for
-  // that shape.
-  if (isJsonVersionPath(versionRel)) {
+  // Nothing to repair when the version lives in a package.json (#2501) or a
+  // pubspec.yaml (#2833): there is no second file to drift from, and classify
+  // never reports DRIFT_* for that shape.
+  if (isJsonVersionPath(versionRel) || isPubspecVersionPath(versionRel)) {
     process.stdout.write(
       JSON.stringify({ repaired: null, reason: `${versionRel} is the single source of truth; no drift possible` }) + "\n",
     );

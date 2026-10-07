@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.34.0] - 2026-10-07
+
+**/ship now reads a Flutter repo's real version: `pubspec.yaml`, `+<build>` suffix and all.**
+
+A Dart or Flutter app has no `VERSION` file — its release identity is `pubspec.yaml`'s `version: 1.4.2+2049`, semantic version plus Android/iOS build number. `/ship` used to classify that repo against an invented `0.0.0.0`, and the PR-title helper then rejected the true version as malformed. A root `pubspec.yaml` is now the version source when nothing is pinned and no `VERSION` exists: `classify` reads `1.4.2+2049`, `write` rewrites only the `version:` line and carries the `+2049` forward when the bump request arrives without one (an explicit `+N` wins), `repair` correctly reports no possible drift, and `gstack-pr-title-rewrite.sh` accepts and rewrites `v1.4.2+2049 fix: ...` titles. A pubspec with no `version:` ships without a version and says why — never `0.0.0.0`.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

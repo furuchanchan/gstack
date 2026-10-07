@@ -962,3 +962,101 @@ describe('G1: version source outcomes (absent / valid / ambiguous / broken)', ()
     });
   }
 });
+
+/**
+ * #2833: a Flutter repo's canonical release identity is pubspec.yaml's
+ * `version: X.Y.Z+build` — not VERSION, which the repo does not have. Before
+ * this, classify read the missing VERSION as a fresh 0.0.0.0 and the
+ * PR-title helper then rejected the real "1.4.2+2049". Detected by presence
+ * (no pin, no VERSION needed); the +<build> suffix is carried through bumps
+ * so the app's build identity is never silently dropped.
+ */
+describe('pubspec.yaml as the version source (Flutter, #2833)', () => {
+  const dirs: string[] = [];
+  afterAll(() => {
+    for (const d of dirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* noop */ } }
+  });
+
+  const PUB = (v: string) =>
+    `name: my_app\ndescription: A Flutter app.\nversion: ${v}\n\nenvironment:\n  sdk: ^3.0.0\ndependencies:\n  flutter:\n    sdk: flutter\n`;
+
+  function pubRepo(version: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vbump-pub-'));
+    dirs.push(dir);
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'pipe', timeout: 30_000 });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@t'); git('config', 'user.name', 't');
+    fs.writeFileSync(path.join(dir, 'pubspec.yaml'), PUB(version));
+    git('add', '-A'); git('commit', '-q', '-m', 'base');
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, timeout: 30_000 }).toString().trim();
+    fs.mkdirSync(path.join(dir, '.git', 'refs', 'remotes', 'origin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.git', 'refs', 'remotes', 'origin', 'main'), head + '\n');
+    return dir;
+  }
+
+  test('classify reads the real pubspec version, build suffix intact', () => {
+    const dir = pubRepo('1.4.2+2049');
+    const out = JSON.parse(
+      execFileSync('bun', [BIN, 'classify', '--base', 'main'], { cwd: dir, timeout: 30_000 }).toString(),
+    );
+    expect(out.state).toBe('FRESH');
+    expect(out.versionSource).toEqual({ outcome: 'valid', path: 'pubspec.yaml', reason: null });
+    expect(out.currentVersion).toBe('1.4.2+2049'); // was NO_VERSION / 0.0.0.0
+    expect(out.baseVersion).toBe('1.4.2+2049');
+    expect(out.pkgExists).toBe(false); // pubspec is the single source; no manifest mirror invented
+  });
+
+  test('write bumps the version: line and carries the +build forward', () => {
+    const dir = pubRepo('1.4.2+2049');
+    // gstack-next-version emits numeric-only; the file's build must survive.
+    const out = JSON.parse(
+      execFileSync('bun', [BIN, 'write', '--version', '1.4.3'], { cwd: dir, timeout: 30_000 }).toString(),
+    );
+    expect(out.wrote).toBe('1.4.3+2049');
+    expect(out.requestedVersion).toBe('1.4.3');
+    expect(out.pubspec).toBe(true);
+    const raw = fs.readFileSync(path.join(dir, 'pubspec.yaml'), 'utf-8');
+    expect(raw).toContain('version: 1.4.3+2049');
+    expect(raw).toContain('sdk: flutter'); // the manifest was rewritten in place, not clobbered
+    expect(fs.existsSync(path.join(dir, 'VERSION'))).toBe(false);
+    // …and classify now reads the bumped identity (a stale-0.0.0.0 here was the bug).
+    const c = JSON.parse(
+      execFileSync('bun', [BIN, 'classify', '--base', 'main'], { cwd: dir, timeout: 30_000 }).toString(),
+    );
+    expect(c.state).toBe('ALREADY_BUMPED');
+    expect(c.currentVersion).toBe('1.4.3+2049');
+  });
+
+  test('an explicit +N in --version wins over the carried suffix', () => {
+    const dir = pubRepo('1.4.2+2049');
+    execFileSync('bun', [BIN, 'write', '--version', '1.4.3+2050'], { cwd: dir, timeout: 30_000 });
+    expect(fs.readFileSync(path.join(dir, 'pubspec.yaml'), 'utf-8')).toContain('version: 1.4.3+2050');
+  });
+
+  test('repair is a no-op: pubspec is the single source, no drift possible', () => {
+    const dir = pubRepo('1.4.2+2049');
+    const out = JSON.parse(
+      execFileSync('bun', [BIN, 'repair'], { cwd: dir, timeout: 30_000 }).toString(),
+    );
+    expect(out.repaired).toBeNull();
+    expect(out.reason).toContain('single source');
+    // …and it must not have written a stray package.json VERSION mirror.
+    expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(false);
+  });
+
+  test('a pubspec with no version: ships without one — ambiguous, never 0.0.0.0', () => {
+    const dir = pubRepo('');
+    const r = (() => {
+      try {
+        return { code: 0, stdout: execFileSync('bun', [BIN, 'classify', '--base', 'main'], { cwd: dir, stdio: 'pipe', timeout: 30_000 }).toString() };
+      } catch (e: any) {
+        return { code: e.status, stdout: String(e.stdout ?? '') };
+      }
+    })();
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.state).toBe('NO_VERSION');
+    expect(out.versionSource.outcome).toBe('ambiguous');
+    expect(out.versionSource.path).toBe('pubspec.yaml');
+  });
+});

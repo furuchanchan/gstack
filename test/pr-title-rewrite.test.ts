@@ -68,4 +68,21 @@ describe('gstack-pr-title-rewrite', () => {
     const twice = rewrite('1.2.3.4', once).stdout;
     expect(twice).toBe(once);
   });
+
+  // #2833: a Flutter repo's NEW_VERSION carries the pubspec build suffix —
+  // "1.4.2+2049" used to fail the digits-only validation outright.
+  test('Dart +build suffix is a valid NEW_VERSION', () => {
+    const r = rewrite('1.4.2+2049', 'fix: crash on rotate');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe('v1.4.2+2049 fix: crash on rotate');
+  });
+
+  test('a +build title that is already correct is left alone, not re-prefixed', () => {
+    expect(rewrite('1.4.2+2049', 'v1.4.2+2049 fix: foo').stdout).toBe('v1.4.2+2049 fix: foo');
+    expect(rewrite('1.4.2+2049', 'v1.4.2+2049').stdout).toBe('v1.4.2+2049');
+  });
+
+  test('an existing +build prefix is replaced, not kept beside the new one', () => {
+    expect(rewrite('1.4.3+2050', 'v1.4.2+2049 fix: foo').stdout).toBe('v1.4.3+2050 fix: foo');
+  });
 });

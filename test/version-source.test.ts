@@ -19,10 +19,19 @@ import {
   bumpWasCoerced,
   npmVersion,
   isJsonVersionPath,
+  isPubspecVersionPath,
   extractVersion,
   setVersionInJson,
+  setVersionInPubspec,
+  buildMetadata,
+  withBuild,
+  resolveVersionRel,
+  resolveVersionSource,
   type Version,
 } from '../lib/version-source';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 describe('parseVersion', () => {
   test('4-digit versions parse to all four components', () => {
@@ -38,10 +47,28 @@ describe('parseVersion', () => {
     expect(parseVersion(' 1.2.3.4\n')).toEqual([1, 2, 3, 4]);
   });
 
+  test('Dart build suffix parses to its numeric components (#2833)', () => {
+    expect(parseVersion('1.4.2+2049')).toEqual([1, 4, 2, 0]);
+    expect(parseVersion('1.4.2.7+2049')).toEqual([1, 4, 2, 7]);
+  });
+
   test('anything else is null, never a guess', () => {
-    for (const bad of ['1.2', 'v1.2.3', '1.2.3.4.5', '1.2.3-rc1', 'abc', '', '{"name":"frontend"']) {
+    for (const bad of ['1.2', 'v1.2.3', '1.2.3.4.5', '1.2.3-rc1', '1.2.3+rc1', '1.2.3+4+5', 'abc', '', '{"name":"frontend"']) {
       expect(parseVersion(bad)).toBeNull();
     }
+  });
+});
+
+describe('buildMetadata + withBuild (#2833)', () => {
+  test('extracts the +N suffix or null', () => {
+    expect(buildMetadata('1.4.2+2049')).toBe('2049');
+    expect(buildMetadata('1.4.2')).toBeNull();
+    expect(buildMetadata('1.4.2+abc')).toBeNull(); // only digits carry Dart build identity
+  });
+
+  test('reattaches a build suffix onto a bumped numeric version', () => {
+    expect(withBuild('1.4.3', '2049')).toBe('1.4.3+2049');
+    expect(withBuild('1.4.3', null)).toBe('1.4.3');
   });
 });
 
@@ -50,6 +77,7 @@ describe('versionWidth + fmtVersion', () => {
     expect(versionWidth('1.2.3.4')).toBe(4);
     expect(versionWidth(' 1.2.3.4 ')).toBe(4);
     expect(versionWidth('1.2.3')).toBe(3);
+    expect(versionWidth('1.4.2+2049')).toBe(3); // +build is metadata, not a component (#2833)
   });
 
   test('formatting round-trips at each width', () => {
@@ -149,6 +177,74 @@ describe('extractVersion', () => {
 
   test('JSON version values are trimmed', () => {
     expect(extractVersion('{"version": " 1.2.3 "}', 'package.json')).toBe('1.2.3');
+  });
+
+  test('pubspec.yaml reads the top-level version: field, build suffix intact (#2833)', () => {
+    const pub = 'name: my_app\ndescription: A Flutter app.\nversion: 1.4.2+2049\n\nenvironment:\n  sdk: ^3.0.0\n';
+    expect(extractVersion(pub, 'pubspec.yaml')).toBe('1.4.2+2049');
+    expect(extractVersion(pub, 'packages/foo/pubspec.yaml')).toBe('1.4.2+2049');
+    // Quoting tolerated; a trailing comment is not part of the value.
+    expect(extractVersion('version: "1.4.2+2049" # released\n', 'pubspec.yaml')).toBe('1.4.2+2049');
+    // No version: line → "" for the caller's own fallback.
+    expect(extractVersion('name: my_app\n', 'pubspec.yaml')).toBe('');
+    // A file merely named .yaml that is not pubspec keeps the raw-text rule.
+    expect(extractVersion('version: 1.2.3\nother: x\n', 'config.yaml')).toBe('version:1.2.3other:x');
+  });
+});
+
+describe('setVersionInPubspec (#2833)', () => {
+  const PUB = 'name: my_app\ndescription: A Flutter app.\nversion: 1.4.2+2049\n\nenvironment:\n  sdk: ^3.0.0\ndependencies:\n  flutter:\n    sdk: flutter\n';
+
+  test('rewrites only the version: line, preserving the rest of the manifest', () => {
+    const out = setVersionInPubspec(PUB, '1.5.0+2050');
+    expect(out).toContain('version: 1.5.0+2050');
+    expect(out).toContain('dependencies:');
+    expect(out).toContain('sdk: flutter');
+    expect(out.split('\n').length).toBe(PUB.split('\n').length);
+  });
+
+  test('round-trips with extractVersion', () => {
+    expect(extractVersion(setVersionInPubspec(PUB, '2.0.0+99'), 'pubspec.yaml')).toBe('2.0.0+99');
+  });
+
+  test('throws rather than clobbering a pubspec with no version: line', () => {
+    expect(() => setVersionInPubspec('name: x\n', '1.0.0')).toThrow();
+  });
+});
+
+describe('pubspec.yaml detection (#2833)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsrc-pubspec-'));
+
+  test('a Flutter repo with no VERSION resolves pubspec.yaml as its source', () => {
+    fs.writeFileSync(path.join(dir, 'pubspec.yaml'), 'name: my_app\nversion: 1.4.2+2049\n');
+    const src = resolveVersionSource(dir);
+    expect(src.outcome).toBe('valid');
+    expect(src.path).toBe('pubspec.yaml');
+    expect(src.version).toBe('1.4.2+2049');
+  });
+
+  test('an explicit pin or VERSION file still wins over pubspec.yaml', () => {
+    fs.writeFileSync(path.join(dir, 'VERSION'), '1.0.0.0\n');
+    const src = resolveVersionSource(dir);
+    expect(src.path).toBe('VERSION');
+    expect(src.version).toBe('1.0.0.0');
+    fs.rmSync(path.join(dir, 'VERSION'));
+    expect(resolveVersionRel(dir, 'pubspec.yaml').pinnedBy).toBe('--version-path');
+  });
+
+  test('a pubspec without a version: is ambiguous, not broken and not 0.0.0.0', () => {
+    fs.rmSync(path.join(dir, 'pubspec.yaml'));
+    fs.writeFileSync(path.join(dir, 'pubspec.yaml'), 'name: my_app\ndescription: no version field\n');
+    const src = resolveVersionSource(dir);
+    expect(src.outcome).toBe('ambiguous');
+    expect(src.version).toBeNull();
+    expect(src.reason).toContain('version');
+    fs.rmSync(path.join(dir, 'pubspec.yaml'), { force: true });
+  });
+
+  test('no version files at all stays absent', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'vsrc-empty-'));
+    expect(resolveVersionSource(empty).outcome).toBe('absent');
   });
 });
 

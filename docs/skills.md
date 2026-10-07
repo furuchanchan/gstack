@@ -701,6 +701,7 @@ A lot of branches die when the interesting work is done and only the boring rele
 1. `--version-path <path>` passed to `gstack-version-bump` / `gstack-next-version`.
 2. `.gstack/version-path`: a committed one-line file holding the version file's repo-relative path, for example `package.json` or `apps/web/package.json`. A `.json` path is read and written as its `"version"` field; 3-digit semver stays 3-digit.
 3. A root `VERSION` file (gstack's own 4-digit `MAJOR.MINOR.PATCH.MICRO` format).
+4. A root `pubspec.yaml`, detected by presence: a Dart/Flutter repo's `version:` field — including its `+<build>` suffix, which is kept through bumps and PR titles (`v1.4.2+2049 fix: ...`) — is the version source.
 
 A root `package.json` on its own does not count, because many apps carry a placeholder there. To have `/ship` version it, run `echo package.json > .gstack/version-path` and commit the file.
 

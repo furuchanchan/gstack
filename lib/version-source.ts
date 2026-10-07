@@ -39,16 +39,34 @@ export type Version = [number, number, number, number];
 export type VersionWidth = 3 | 4;
 export type Bump = "major" | "minor" | "patch" | "micro";
 
-/** Parse 3- or 4-component versions. 3-digit pads to [a,b,c,0] so comparison stays uniform. */
+/**
+ * Parse 3- or 4-component versions. 3-digit pads to [a,b,c,0] so comparison
+ * stays uniform. A Dart-style build suffix (`1.4.2+2049`, the versionCode of a
+ * pubspec.yaml `version:`) parses to its numeric components — the suffix is
+ * metadata, not a component; read it with buildMetadata().
+ */
 export function parseVersion(s: string): Version | null {
-  const m = s.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/);
+  const m = s.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:\+(\d+))?$/);
   if (!m) return null;
   return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4] ?? 0)];
 }
 
+/** The `+N` build suffix of "1.4.2+2049" → "2049", or null when absent. */
+export function buildMetadata(s: string): string | null {
+  const m = s.trim().match(/\+(\d+)$/);
+  return m ? m[1]! : null;
+}
+
+/** Attach a build suffix to a numeric version (withBuild("1.4.3", "2049") → "1.4.3+2049"). */
+export function withBuild(version: string, build: string | null): string {
+  return build ? `${version}+${build}` : version;
+}
+
 /** How many components the string actually had — what to format back out as. */
 export function versionWidth(s: string): VersionWidth {
-  return /^\d+\.\d+\.\d+\.\d+$/.test(s.trim()) ? 4 : 3;
+  // Build metadata is not a component: 1.2.3+4 has width 3, not 4.
+  const bare = s.trim().replace(/\+\d+$/, "");
+  return /^\d+\.\d+\.\d+\.\d+$/.test(bare) ? 4 : 3;
 }
 
 export function fmtVersion(v: Version, width: VersionWidth = 4): string {
@@ -105,6 +123,11 @@ export function isJsonVersionPath(versionPath: string): boolean {
   return /\.json$/i.test(versionPath.trim());
 }
 
+/** A pubspec.yaml at any depth is read as Dart's top-level `version:` field (#2833). */
+export function isPubspecVersionPath(versionPath: string): boolean {
+  return /(^|\/)pubspec\.yaml$/i.test(versionPath.trim());
+}
+
 /**
  * Pull the version out of whatever the version-path resolves to. `text` is the
  * file's contents from anywhere — local read, `git show`, or a base64-decoded
@@ -112,6 +135,13 @@ export function isJsonVersionPath(versionPath: string): boolean {
  * there is no usable version, which callers map to their own fallback.
  */
 export function extractVersion(text: string, versionPath: string): string {
+  if (isPubspecVersionPath(versionPath)) {
+    // Dart's manifest carries `version: X.Y.Z+build` as a top-level key (the
+    // leading-whitespace allowance covers unconventionally indented files); a
+    // trailing comment or quote is not part of the value.
+    const m = text.match(/^[ \t]*version:[ \t]*['"]?([^\s'"#]+)/m);
+    return m ? m[1]! : "";
+  }
   if (!isJsonVersionPath(versionPath)) return text.replace(/[\r\n\s]/g, "");
   try {
     const parsed = JSON.parse(text) as { version?: unknown };
@@ -132,6 +162,18 @@ export function setVersionInJson(raw: string, version: string): string {
   return JSON.stringify(parsed, null, 2) + "\n";
 }
 
+/**
+ * Write a version back into a pubspec.yaml, rewriting only the `version:`
+ * line (#2833). The manifest carries the package's whole dependency tree, so
+ * a wholesale text write — the plain-VERSION path's `version + "\n"` — would
+ * destroy it. Throws when there is no version line to rewrite.
+ */
+export function setVersionInPubspec(raw: string, version: string): string {
+  const next = raw.replace(/^([ \t]*)version:[^\n]*$/m, (_m, indent) => `${indent}version: ${version}`);
+  if (next === raw) throw new Error("pubspec.yaml has no version: line to rewrite");
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // Where the version lives, as one of four outcomes (#2334, #2343).
 //
@@ -148,9 +190,11 @@ export function setVersionInJson(raw: string, version: string): string {
 //   broken     a configured source is missing, empty, unreadable or
 //              malformed — stop with the reason. Never substitute 0.0.0.0.
 //
-// "Configured" means --version-path, the .gstack/version-path pin, or a root
-// VERSION file. A root package.json alone is not a configured source: pin it
-// in .gstack/version-path to have /ship version it.
+// "Configured" means --version-path, the .gstack/version-path pin, a root
+// VERSION file — or, detected by presence, a root pubspec.yaml (#2833:
+// Dart/Flutter's canonical release identity). A root package.json alone is
+// not a configured source: pin it in .gstack/version-path to have /ship
+// version it.
 
 export type VersionSourceOutcome = "valid" | "absent" | "ambiguous" | "broken";
 
@@ -204,6 +248,13 @@ export function resolveVersionRel(
       guard?.(rel, ".gstack/version-path");
       return { rel, pinnedBy: ".gstack/version-path" };
     }
+  }
+  // #2833: a Dart/Flutter repo's canonical release identity is pubspec.yaml's
+  // `version:` — an app with no VERSION used to classify against an invented
+  // 0.0.0.0 while its real version sat unread. Auto-detected only when no pin
+  // and no VERSION exist; explicit configuration always wins.
+  if (!existsSync(join(repoRoot, "VERSION")) && existsSync(join(repoRoot, "pubspec.yaml"))) {
+    return { rel: "pubspec.yaml", pinnedBy: null };
   }
   return { rel: "VERSION", pinnedBy: null };
 }
@@ -271,6 +322,20 @@ export function resolveVersionSource(
   const v = extractVersion(raw, rel);
   if (!v || !parseVersion(v)) {
     const shown = isJsonVersionPath(rel) ? (v ? `"version": "${v}"` : "no \"version\" string") : `"${raw.trim().slice(0, 40)}"`;
+    if (!pinnedBy && isPubspecVersionPath(rel)) {
+      // An auto-detected pubspec whose `version:` is absent or malformed is a
+      // Flutter app whose release identity lives elsewhere — ship without a
+      // version change and say so, rather than aborting on a file gstack
+      // detected on its own (#2833). A PINNED pubspec stays broken: the repo
+      // declared it the source, so its contents are the repo's to fix.
+      return {
+        outcome: "ambiguous",
+        path: rel,
+        pinnedBy: null,
+        version: null,
+        reason: `pubspec.yaml is present but its version: is missing or unparsable (found ${shown})`,
+      };
+    }
     return broken(`${rel} contains no parsable version (found ${shown})`);
   }
   return { outcome: "valid", path: rel, pinnedBy, version: v, reason: null };

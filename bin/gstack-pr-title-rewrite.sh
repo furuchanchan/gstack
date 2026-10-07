@@ -18,9 +18,10 @@
 # `gh pr edit`s the result, so the duplicated title would be written back.
 #
 # The version-prefix regex matches two or more dot-separated digit segments
-# (covers v1.2, v1.2.3, v1.2.3.4) so the rule is portable across repos that
-# use 3-part or 4-part versions, but does NOT strip plain words like
-# "version 5".
+# (covers v1.2, v1.2.3, v1.2.3.4) plus an optional Dart-style +<build> suffix
+# (v1.4.2+2049, a Flutter repo's pubspec identity — #2833) so the rule is
+# portable across repos that use 3-part or 4-part versions, but does NOT
+# strip plain words like "version 5".
 
 set -euo pipefail
 
@@ -32,10 +33,11 @@ fi
 NEW_VERSION="$1"
 TITLE="$2"
 
-# Reject malformed NEW_VERSION early. Real values are dot-separated digits;
+# Reject malformed NEW_VERSION early. Real values are dot-separated digits
+# with an optional +<build> suffix (Dart/Flutter pubspec versions — #2833);
 # anything with shell pattern metacharacters or whitespace is a caller bug.
-if ! printf '%s' "$NEW_VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
-  echo "error: NEW_VERSION must be dot-separated digits, got: $NEW_VERSION" >&2
+if ! printf '%s' "$NEW_VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*(\+[0-9]+)?$'; then
+  echo "error: NEW_VERSION must be dot-separated digits (optional +build suffix), got: $NEW_VERSION" >&2
   exit 2
 fi
 
@@ -51,7 +53,7 @@ esac
 
 # Strip an existing different version prefix whether it is followed by a space
 # (then a description) or sits at the end of the title (bare version).
-REST=$(printf '%s' "$TITLE" | sed -E 's/^v[0-9]+(\.[0-9]+)+( |$)//')
+REST=$(printf '%s' "$TITLE" | sed -E 's/^v[0-9]+(\.[0-9]+)+(\+[0-9]+)?( |$)//')
 if [ -n "$REST" ]; then
   printf 'v%s %s\n' "$NEW_VERSION" "$REST"
 else
