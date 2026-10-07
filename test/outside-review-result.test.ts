@@ -271,3 +271,37 @@ describe('a mid-run Codex usage limit is unavailable (quota_exhausted); a mid-ru
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe('usage capture from codex exec --json events (#2948)', () => {
+  const turn = (u: object) => JSON.stringify({ type: 'turn.completed', usage: u });
+  const USAGE = { input_tokens: 12016, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 };
+
+  test('classify carries the last turn.completed usage through every verdict', () => {
+    const events = [
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }),
+      JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', status: 'completed', exit_code: 0 } }),
+      turn(USAGE),
+    ].join('\n');
+    const clean = classifyOutsideReview({ text: RECOMMEND, events, gate: 'review' });
+    expect(clean.verdict).toBe('clean');
+    expect(clean.usage).toEqual(USAGE);
+    const unavailable = classifyOutsideReview({ text: '', events, gate: 'review' });
+    expect(unavailable.verdict).toBe('unavailable');
+    expect(unavailable.usage).toEqual(USAGE);
+  });
+
+  test('malformed and non-usage events are ignored; no usage means no usage key', () => {
+    const events = ['not json', '{"type":"turn.completed"}', JSON.stringify({ type: 'item.completed' }), '{bad'].join('\n');
+    const result = classifyOutsideReview({ text: RECOMMEND, events, gate: 'review' });
+    expect(result.usage).toBeUndefined();
+  });
+
+  test('verdict form prints a USAGE line when the events report one', () => {
+    const events = file(turn(USAGE));
+    const r = cli(['--verdict', '--events', events, 'review', file(RECOMMEND)]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(`USAGE: ${JSON.stringify(USAGE)}\n`);
+    const none = cli(['--verdict', 'review', file(RECOMMEND)]);
+    expect(none.stdout).toBe('VERDICT: clean\nFINDINGS: none\n');
+  });
+});

@@ -221,7 +221,7 @@ export function outsideVoiceFailurePolicy(ctx: TemplateContext, opts: OutsideVoi
 
 export function outsideVoiceProvenance(ctx: TemplateContext, phase: string): string {
   const v = outsideVoiceFor(ctx);
-  return `Retain the historical review-log skill ID; add \`"host":"${ctx.host}","outside_provider":"${v.id}","outside_status":"completed|unavailable|disabled|skipped","phase":"${phase}"\`. Record differing attempt outcomes separately. \`source:"${v.id}"\` requires completed CLI output; native uses \`source:"in-host"\` (historical \`source:"claude"\`: native Claude). Availability/native fallback is not outside completion. Preserve all reported modelUsage; unknown model identity stays unknown.${v.id === 'codex' ? ' Under `GSTACK_CODEX_NO_SANDBOX=1` add `"codex_sandbox":"danger-full-access"`.' : ''}`;
+  return `Retain the historical review-log skill ID; add \`"host":"${ctx.host}","outside_provider":"${v.id}","outside_status":"completed|unavailable|disabled|skipped","phase":"${phase}"\`. Record differing attempt outcomes separately. \`source:"${v.id}"\` requires completed CLI output; native uses \`source:"in-host"\` (historical \`source:"claude"\`: native Claude). Availability/native fallback is not outside completion. Preserve all reported modelUsage; unknown model identity stays unknown.${v.id === 'codex' ? ' When the run output has a `USAGE:` line, copy its JSON object verbatim into the row as `"usage":{...}` — local cost accounting, recorded regardless of telemetry; no USAGE line means no usage field.' : ''}${v.id === 'codex' ? ' Under `GSTACK_CODEX_NO_SANDBOX=1` add `"codex_sandbox":"danger-full-access"`.' : ''}`;
 }
 
 export function generateOutsideVoiceRouting(ctx: TemplateContext): string {

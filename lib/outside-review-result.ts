@@ -30,6 +30,22 @@ export interface OutsideReviewClassification {
   reason?: GateReason;
   detail?: string;
   score?: number;
+  /** Token counts from the last `turn.completed` event, when the provider reports them. */
+  usage?: Record<string, number>;
+}
+
+/** `codex exec --json` reports usage on each turn end; the last one covers the run. */
+export function usageFromEvents(events: string): Record<string, number> | undefined {
+  let usage: Record<string, number> | undefined;
+  for (const line of events.split(/\r?\n/)) {
+    if (!line.trim().startsWith('{')) continue;
+    let event: any;
+    try { event = JSON.parse(line); } catch { continue; }
+    if (event?.type !== 'turn.completed') continue;
+    const u = event?.usage;
+    if (u && typeof u === 'object' && Object.values(u).some(v => typeof v === 'number')) usage = u;
+  }
+  return usage;
 }
 
 const REFUSAL = /\b(?:(?:I (?:cannot|can't|won't|will not|am unable to)|I'm unable to)\s+(?:review|analy[sz]e|evaluate|assess|inspect|access|complete|perform|provide|assist|help|proceed)|unable to (?:review|analy[sz]e)|I must (?:decline|refuse))\b/i;
@@ -121,11 +137,12 @@ export function classifyOutsideReview(input: OutsideReviewInput): OutsideReviewC
   const plain = plainReview(input.text);
   const levels = [...plain.matchAll(/\[(P[0-3])\]|^(P[0-3]):/gm)].map(m => (m[1] ?? m[2]) as Severity);
   const findings = { highest: levels.length ? levels.sort()[0]! : null };
+  const usage = usageFromEvents(input.events ?? '');
   const ran = execution(input);
-  if (ran.state === 'unavailable') return { execution: ran, findings, verdict: 'unavailable', reason: ran.reason, detail: ran.detail };
+  if (ran.state === 'unavailable') return { execution: ran, findings, verdict: 'unavailable', reason: ran.reason, detail: ran.detail, ...(usage ? { usage } : {}) };
   const blocking = findings.highest === 'P0' || findings.highest === 'P1';
   const result = (verdict: OutsideVerdict, reason?: GateReason, detail?: string): OutsideReviewClassification =>
-    ({ execution: ran, findings, verdict, ...(reason ? { reason } : {}), ...(detail ? { detail } : {}) });
+    ({ execution: ran, findings, verdict, ...(reason ? { reason } : {}), ...(detail ? { detail } : {}), ...(usage ? { usage } : {}) });
   if (input.gate === 'spec') {
     const scores = [...input.text.matchAll(/^SCORE:[\t ]*(10|[0-9])[\t ]*\r?$/gm)];
     const ambiguities = [...input.text.matchAll(/^AMBIGUITIES:[\t ]*(\S[^\r\n]*)\r?$/gm)];
@@ -203,6 +220,7 @@ if (import.meta.main) {
     stderr: await readOptional(flags['--stderr']), events: await readOptional(flags['--events']) });
   console.log(`VERDICT: ${checked.verdict}`);
   console.log(`FINDINGS: ${checked.findings.highest ?? 'none'}`);
+  if (checked.usage) console.log(`USAGE: ${JSON.stringify(checked.usage)}`);
   if (checked.reason) {
     console.log(`REASON: ${checked.reason}`);
     console.error(gateOutcomeLine(flags['--label'] ?? 'Outside review', checked.reason, checked.detail));
