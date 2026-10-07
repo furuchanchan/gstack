@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.91.42.0] - 2026-10-08
+
+**The browser rules now check for an already-open signed-in tab, and a second sign-in wall means the session lives in the tab or the URL — not "ask again".** Until now every driving skill opened a fresh tab even when the user already had the target signed in, and rule 4 could loop forever on apps that carry the session in a URL or POST parameter instead of a cookie (a confirmed sign-in changed nothing, because no cookie is shared). Rule 1 now has the driver run `listBrowserTabs()` before the first `openTab` on a target and — after a one-time confirmation — attach to the user's signed-in tab instead of opening a duplicate. Rule 4 now says a wall that survives a confirmed sign-in means the session is probably tab- or URL-bound: ask the user to name their signed-in tab and `attachBrowserTab` to it (or re-open the exact URL carrying the session parameter), rather than asking for another sign-in.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

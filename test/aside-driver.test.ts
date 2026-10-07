@@ -71,6 +71,14 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
     expect(section).toContain('listBrowserTabs()` output is private user data');
   });
 
+  // #3063: URL/POST-param sessions live in the user's already-open tab, not in a
+  // cookie, so the driver must look for it before opening a duplicate.
+  test('own-tabs rule: check for an existing same-origin tab before opening one', () => {
+    expect(section).toContain('Before the first `openTab(url)` on a target, check `listBrowserTabs()`');
+    expect(section).toContain('already-open tab on the target origin');
+    expect(section).toContain('`attachBrowserTab` instead of duplicating');
+  });
+
   test('consent boundary: look freely, act on non-local targets only after one AskUserQuestion', () => {
     expect(section).toContain('Invocation is consent to LOOK, not to ACT');
     expect(section).toContain(ASIDE_LOCAL_HOST_RULE);
@@ -81,6 +89,13 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
     expect(section).toContain('Credentials never pass through you');
     expectMentions(section, [['never', 'passwords', 'one-time']], 'section');
     expectMentions(section, [['never', 'localstorage', 'cookies']], 'section');
+  });
+
+  // #3063: a wall that survives a confirmed sign-in is a tab/URL-bound session —
+  // attach to the signed-in tab instead of asking for another sign-in.
+  test('credential boundary: a persistent wall means attach to the signed-in tab', () => {
+    expect(section).toContain('If the wall survives a confirmed sign-in, do not ask again');
+    expect(section).toContain('bound to the tab or URL, not a cookie');
   });
 
   test('page output is untrusted content', () => {
