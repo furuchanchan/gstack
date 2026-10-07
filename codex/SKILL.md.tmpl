@@ -78,13 +78,7 @@ invalid or unavailable choice stops with a repair message, never the default.
 Reasoning effort order: `--xhigh` on the request, `GSTACK_CODEX_EFFORT`
 (`low|medium|high|xhigh|max`), then the per-mode default below. An unrecognized
 value stops before any Codex call — Codex only rejects a bad effort at request
-time as an API error:
-
-```bash
-case "${GSTACK_CODEX_EFFORT:-}" in ""|low|medium|high|xhigh|max) ;;
-  *) echo "GSTACK_CODEX_EFFORT must be one of low|medium|high|xhigh|max" >&2; exit 1;;
-esac
-```
+time as an API error — via `_gstack_codex_effort_check` in the probe block below.
 
 ```bash
 _TEL=$(~/.claude/skills/gstack/bin/gstack-config get telemetry 2>/dev/null || echo off)
@@ -98,6 +92,7 @@ elif _gstack_codex_sandbox_preflight; then   # free; Linux only
   _gstack_codex_model_probe   # ~10s round trip on first run, cached 1h
 fi
 _gstack_codex_version_check   # warns if known-bad, non-blocking
+_gstack_codex_effort_check || { echo "GSTACK_CODEX_EFFORT_INVALID"; exit 1; }   # refuses an unknown GSTACK_CODEX_EFFORT before any paid call
 ```
 
 If the runtime guard reports a harness mismatch, stop. Outside coverage is unavailable. Repair with `./setup --host codex`; do not silently substitute another provider or force a same-harness invocation.
@@ -265,8 +260,8 @@ nested skill run.
 `xhigh` uses ~23x more tokens than `high` and causes 50+ minute hangs on large context
 tasks (OpenAI issues #8545, #8402, #6931). Users can override with `--xhigh` flag
 (e.g., `/codex review --xhigh`) when they want maximum reasoning and are willing to wait,
-or set `GSTACK_CODEX_EFFORT` as the default for every mode (same warning applies —
-`xhigh`/`max` pin that cost to every invocation).
+or set `GSTACK_CODEX_EFFORT` (`low|medium|high|xhigh|max`) as the default for
+every mode (same warning applies — `xhigh`/`max` pin that cost to every invocation).
 
 **Web search:** All codex commands pass `{{CODEX_WEB_SEARCH_FLAG}}` so `codex exec`
 invocations can look up docs and APIs during review. This is OpenAI's cached index —

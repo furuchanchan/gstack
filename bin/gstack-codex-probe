@@ -431,6 +431,25 @@ _gstack_codex_version_check() {
   fi
 }
 
+# --- Reasoning effort env default (#2975) ------------------------------------
+
+_gstack_codex_effort_check() {
+  # GSTACK_CODEX_EFFORT pins the default model_reasoning_effort for every mode
+  # the same way GSTACK_CODEX_MODEL pins the model: unset keeps the per-mode
+  # defaults, a set value must be one Codex accepts. Codex only rejects a bad
+  # model_reasoning_effort at request time — after the paid call starts — so an
+  # unknown value is refused here with a repair message instead.
+  [ -z "${GSTACK_CODEX_EFFORT:-}" ] && return 0
+  case "$GSTACK_CODEX_EFFORT" in
+    low|medium|high|xhigh|max)
+      echo "CODEX_EFFORT: $GSTACK_CODEX_EFFORT (source: GSTACK_CODEX_EFFORT)" >&2
+      return 0 ;;
+    *)
+      echo "CODEX_EFFORT: invalid — GSTACK_CODEX_EFFORT=$GSTACK_CODEX_EFFORT is not one of low|medium|high|xhigh|max. Unset it or fix the value; no Codex call was made." >&2
+      return 1 ;;
+  esac
+}
+
 # --- Timeout wrapper --------------------------------------------------------
 
 _gstack_codex_timeout_wrapper() {
