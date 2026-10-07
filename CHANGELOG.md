@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.34.0] - 2026-10-07
+
+**Factory Droid installs now place skills where Droid actually discovers them.**
+
+`./setup --host factory` previously symlinked `~/.factory/skills/gstack-*` straight into the repository render tree with absolute paths and never registered a skill lockfile. Droid follows only relative symlinks, reads real directories under `~/.agents/skills`, and loads lockfile entries whose `sourceType` is `github` — so every gstack skill was invisible to Droid's `/` menu. Setup now installs each skill as a real directory under `~/.agents/skills`, points `~/.factory/skills/gstack-*` at it with a relative symlink, and registers each skill in `~/.agents/.skill-lock.json` with `sourceType: "github"`. Foreign directories and lockfile entries are never overwritten, and the stale-skill prune now covers `~/.agents/skills` too.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

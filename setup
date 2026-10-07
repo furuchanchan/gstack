@@ -740,7 +740,7 @@ _gstack_target_is_ours() {
   render="${GSTACK_USER_RENDER_DIR:-$GSTACK_STATE_ROOT/render/claude}"
   render_real="$(cd "$render" 2>/dev/null && pwd -P || printf '%s' "$render")"
   case "$t" in
-    "$g"/*|"$g_real"/*|"$render"/*|"$render_real"/*|gstack/*|*/gstack/*|*/.gstack/render/claude/*) return 0 ;;
+    "$g"/*|"$g_real"/*|"$render"/*|"$render_real"/*|gstack/*|*/gstack/*|*/.gstack/render/claude/*|"$HOME"/.agents/skills/gstack-*) return 0 ;;
   esac
   # A checkout named without a `gstack` segment (git worktree add
   # ../gstack-<branch>, a ZIP unpacked as gstack-main): the target's skill
@@ -2835,10 +2835,51 @@ create_opencode_runtime_root() {
   fi
 }
 
+# Factory Droid's discovery model (#661): it follows only RELATIVE symlinks in
+# ~/.factory/skills, reads skill files from REAL directories in
+# ~/.agents/skills, and its lockfile (~/.agents/.skill-lock.json) loads only
+# entries whose sourceType is "github". The historical install — absolute
+# symlinks from ~/.factory/skills into the repo's render tree and no lockfile
+# registration — satisfied none of these, so gstack skills never appeared in
+# Droid's `/` menu.
+_factory_lockfile_update() {
+  # $1 = lockfile path, $2 = op ("register"|"unregister"), $3 = skill name.
+  # register: upserts skills.<name> as sourceType=github; refuses to overwrite
+  # a foreign entry (not local, not gstack-sourced). unregister: drops the
+  # entry only when it is local or gstack-sourced.
+  local lockfile="$1" op="$2" name="$3"
+  FCL_FILE="$lockfile" FCL_OP="$op" FCL_NAME="$name" FCL_URL="https://github.com/garrytan/gstack" bun_cmd -e '
+    const fs = require("fs");
+    const path = require("path");
+    const file = process.env.FCL_FILE, op = process.env.FCL_OP, name = process.env.FCL_NAME;
+    let data = {};
+    try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+    if (typeof data !== "object" || data === null || Array.isArray(data)) data = {};
+    if (typeof data.skills !== "object" || data.skills === null || Array.isArray(data.skills)) data.skills = {};
+    const cur = data.skills[name];
+    const ours = cur === undefined || cur === null ||
+      (typeof cur === "object" && (cur.sourceType === "local" ||
+        (typeof cur.sourceUrl === "string" && cur.sourceUrl.includes("garrytan/gstack"))));
+    if (!ours) {
+      console.log(`  kept ${name} in ${file}: not gstack-managed (sourceType=${cur.sourceType})`);
+      process.exit(0);
+    }
+    if (op === "register") {
+      data.skills[name] = { ...(typeof cur === "object" && cur !== null ? cur : {}), sourceType: "github", sourceUrl: process.env.FCL_URL };
+    } else {
+      delete data.skills[name];
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+  '
+}
+
 link_factory_skill_dirs() {
   local gstack_dir="$1"
   local skills_dir="$2"
   local factory_dir="$gstack_dir/.factory/skills"
+  local agents_dir="$HOME/.agents/skills"
+  local lockfile="$HOME/.agents/.skill-lock.json"
   local linked=()
 
   if [ ! -d "$factory_dir" ]; then
@@ -2854,22 +2895,42 @@ link_factory_skill_dirs() {
   for skill_dir in "$factory_dir"/gstack*/; do
     if [ -f "$skill_dir/SKILL.md" ]; then
       skill_name="$(basename "$skill_dir")"
-      case "${_DISABLED_SKILLS:- }" in *" ${skill_name#gstack-} "*) _remove_disabled_host_entry "$skills_dir/$skill_name"; continue ;; esac
+      case "${_DISABLED_SKILLS:- }" in *" ${skill_name#gstack-} "*) _remove_disabled_host_entry "$skills_dir/$skill_name"; _remove_disabled_host_entry "$agents_dir/$skill_name"; _factory_lockfile_update "$lockfile" unregister "$skill_name"; continue ;; esac
       [ "$skill_name" = "gstack" ] && continue
       target="$skills_dir/$skill_name"
-      # #2444: on Windows the installed target is a REAL directory copy, so
-      # the symlink-or-missing guard skipped every re-run and SKILL.md never
-      # refreshed after `git pull`. IS_WINDOWS bypasses the guard —
-      # _link_or_copy rm -rf's the destination first, refreshing the copy.
-      # #2142: a real dir may only be replaced when it is provably ours
-      # (_owned_for_windows_refresh), never a user's own colliding dir.
-      if [ "$IS_WINDOWS" -eq 1 ] || [ -L "$target" ] || [ ! -e "$target" ]; then
+      agents_target="$agents_dir/$skill_name"
+      # The real skill dir lives in ~/.agents/skills, the namespace Droid
+      # reads. It is a REAL copy on every platform, so it needs the Windows
+      # refresh semantics (#2444): always replace when provably ours —
+      # missing, a symlink, a non-dir, or a generated-banner dir (#2142) —
+      # or a `git pull` leaves the copy stale forever.
+      local installed=0
+      if _owned_for_windows_refresh "$agents_target"; then
+        mkdir -p "$agents_dir"
+        if [ "$IS_WINDOWS" -eq 1 ]; then
+          _link_or_copy "$skill_dir" "$agents_target" && installed=1
+        else
+          if [ -e "$agents_target" ] || [ -L "$agents_target" ]; then rm -rf "$agents_target"; fi
+          cp -R "$skill_dir" "$agents_target" && installed=1
+        fi
+      else
+        echo "  left in place (existing dir not gstack-managed — no generated banner): $agents_target" >&2
+      fi
+      # ~/.factory/skills holds only pointers: a RELATIVE symlink into
+      # ~/.agents/skills on Unix (the only shape Droid follows), a real copy
+      # on Windows. Only our symlink or a missing entry is ever replaced.
+      if [ "$IS_WINDOWS" -eq 1 ]; then
         if _owned_for_windows_refresh "$target"; then
           _link_or_copy "$skill_dir" "$target"
-          linked+=("$skill_name")
         else
           echo "  left in place (existing dir not gstack-managed — no generated banner): $target" >&2
         fi
+      elif [ -L "$target" ] || [ ! -e "$target" ]; then
+        ln -sfn "../../.agents/skills/$skill_name" "$target"
+      fi
+      if [ "$installed" -eq 1 ]; then
+        _factory_lockfile_update "$lockfile" register "$skill_name"
+        linked+=("$skill_name")
       fi
     fi
   done
@@ -3536,7 +3597,7 @@ if [ "$INSTALL_FACTORY" -eq 1 ]; then
   _setup_arm_begin factory global "$FACTORY_SKILLS"
   mkdir -p "$FACTORY_SKILLS"
   _activate_runtime_root create_factory_runtime_root "$SOURCE_GSTACK_DIR" "$FACTORY_GSTACK"
-  _prune_stale_generated "$SOURCE_GSTACK_DIR" "$SOURCE_GSTACK_DIR/.factory/skills" "$FACTORY_SKILLS"
+  _prune_stale_generated "$SOURCE_GSTACK_DIR" "$SOURCE_GSTACK_DIR/.factory/skills" "$FACTORY_SKILLS" "$HOME/.agents/skills"
   link_factory_skill_dirs "$SOURCE_GSTACK_DIR" "$FACTORY_SKILLS"
   _setup_arm_publish factory global - "$FACTORY_SKILLS" "$FACTORY_GSTACK" -
   echo "gstack ready (factory)."
