@@ -52,7 +52,7 @@ _gstack_codex_select_model review || exit 1
 # The 330s wrapper sits BELOW the 360s Bash gate so the wrapper fires FIRST
 # and a stall surfaces as a diagnosable exit 124 with an explicit message,
 # never as a silent harness kill that downstream reads as "no findings".
-_gstack_codex_timeout_wrapper 330 codex review --base <base> -c "sandbox_mode=\"${_GSTACK_CODEX_SANDBOX:?}\"" -c "review_model=\"${_GSTACK_CODEX_SEL:?}\"" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c 'model_reasoning_effort="high"' -c 'web_search="cached"' < /dev/null >"$TMPOUT" 2>"$TMPERR"
+_gstack_codex_timeout_wrapper 330 codex review --base <base> -c "sandbox_mode=\"${_GSTACK_CODEX_SANDBOX:?}\"" -c "review_model=\"${_GSTACK_CODEX_SEL:?}\"" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c "model_reasoning_effort=\"${GSTACK_CODEX_EFFORT:-high}\"" -c 'web_search="cached"' < /dev/null >"$TMPOUT" 2>"$TMPERR"
 _CODEX_EXIT=$?
 cat "$TMPOUT"
 if [ "$_CODEX_EXIT" = "124" ]; then
@@ -70,7 +70,7 @@ fi
 bun ~/.claude/skills/gstack/lib/outside-review-result.ts --label 'Codex review' --exit "$_CODEX_EXIT" --stderr "$TMPERR" structured "$TMPOUT"
 ```
 
-If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
+If the user passed `--xhigh`, use `"xhigh"` (overrides `GSTACK_CODEX_EFFORT` and the `"high"` default).
 
 **Custom-instructions path (user typed `/codex review <focus>`):** custom instructions
 cannot ride along with `--base` — that is exactly the combination the CLI rejects — and
@@ -116,7 +116,7 @@ _PROMPT_FILE=$(mktemp "$TMP_ROOT/codex-prompt-XXXXXX") || { echo "ERROR: mktemp 
   git diff "<base>...HEAD" 2>/dev/null
   printf '\nDIFF_END\n'
 } > "$_PROMPT_FILE"
-_gstack_codex_timeout_wrapper 330 codex exec - -s "${_GSTACK_CODEX_SANDBOX:?}" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c 'model_reasoning_effort="high"' -c 'web_search="cached"' --json -o "$TMPOUT" < "$_PROMPT_FILE" >"$TMPOUT.events" 2>"$TMPERR"
+_gstack_codex_timeout_wrapper 330 codex exec - -s "${_GSTACK_CODEX_SANDBOX:?}" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c "model_reasoning_effort=\"${GSTACK_CODEX_EFFORT:-high}\"" -c 'web_search="cached"' --json -o "$TMPOUT" < "$_PROMPT_FILE" >"$TMPOUT.events" 2>"$TMPERR"
 _CODEX_EXIT=$?
 rm -f "$_PROMPT_FILE" "$FOCUS_FILE"
 cat "$TMPOUT"

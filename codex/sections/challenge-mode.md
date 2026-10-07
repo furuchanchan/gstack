@@ -35,7 +35,7 @@ Substitute the printed name for `<prompt-file-name>` (letters, digits, `.`, `_` 
 Use `timeout: 600000` on the Bash call (the tool's maximum) — the gate sits ABOVE the
 540s wrapper so the wrapper fires first, ends Codex, and prints its explicit stall message:
 
-If the user passed `--xhigh`, use `"xhigh"` instead of `"high"`.
+If the user passed `--xhigh`, use `"xhigh"` (overrides `GSTACK_CODEX_EFFORT` and the `"high"` default).
 
 ```bash
 _REPO_ROOT=$(git rev-parse --show-toplevel) || { echo "ERROR: not in a git repo" >&2; exit 1; }
@@ -52,7 +52,7 @@ source ~/.claude/skills/gstack/bin/gstack-codex-probe || exit 1
 _gstack_codex_select_model exec || exit 1
 PROMPT_FILE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.gstack/tmp/<prompt-file-name>"
 [ -s "$PROMPT_FILE" ] || { echo "Not run: $PROMPT_FILE is missing or empty, so the prompt was never written. Write it, then run by hand: codex exec - -C $_REPO_ROOT < $PROMPT_FILE" >&2; exit 1; }
-_gstack_codex_timeout_wrapper 540 codex exec - -C "$_REPO_ROOT" -s "${_GSTACK_CODEX_SANDBOX:?}" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c 'model_reasoning_effort="high"' -c 'web_search="cached"' --json -o "$TMPRESP" < "$PROMPT_FILE" 2>"$TMPERR" | tee "$TMPRESP.events" | PYTHONUNBUFFERED=1 "$PYTHON_CMD" -u -c "
+_gstack_codex_timeout_wrapper 540 codex exec - -C "$_REPO_ROOT" -s "${_GSTACK_CODEX_SANDBOX:?}" -c "model=\"${_GSTACK_CODEX_SEL:?}\"" -c skills.include_instructions=false -c "model_reasoning_effort=\"${GSTACK_CODEX_EFFORT:-high}\"" -c 'web_search="cached"' --json -o "$TMPRESP" < "$PROMPT_FILE" 2>"$TMPERR" | tee "$TMPRESP.events" | PYTHONUNBUFFERED=1 "$PYTHON_CMD" -u -c "
 import sys, json
 turn_completed_count = 0
 turn_failed = False

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.36.0] - 2026-10-08
+
+**`/codex` picks up a `GSTACK_CODEX_EFFORT` environment default.**
+
+`GSTACK_CODEX_MODEL` already lets an operator pin the model per shell, but reasoning effort had no equivalent: every mode hard-coded its value and `--xhigh` was the only override, typed on each invocation. `GSTACK_CODEX_EFFORT` (`low|medium|high|xhigh|max`) now supplies the default for all three modes — unset keeps the per-mode defaults (high for review and challenge, medium for consult), and `--xhigh` on a request still wins for that request. An unrecognized value stops before any Codex call instead of surfacing as an API error mid-run, matching how an unusable `GSTACK_CODEX_MODEL` already behaves. The same cost and hang warning that covers `--xhigh` now names the env var, since pinning `xhigh` or `max` applies that cost to every invocation. Closes #2975.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

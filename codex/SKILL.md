@@ -474,6 +474,17 @@ For a named model, pass it as the second argument of every `_gstack_codex_select
 call, and run `_gstack_codex_select_model exec '<model>'` before the probe below. An
 invalid or unavailable choice stops with a repair message, never the default.
 
+Reasoning effort order: `--xhigh` on the request, `GSTACK_CODEX_EFFORT`
+(`low|medium|high|xhigh|max`), then the per-mode default below. An unrecognized
+value stops before any Codex call — Codex only rejects a bad effort at request
+time as an API error:
+
+```bash
+case "${GSTACK_CODEX_EFFORT:-}" in ""|low|medium|high|xhigh|max) ;;
+  *) echo "GSTACK_CODEX_EFFORT must be one of low|medium|high|xhigh|max" >&2; exit 1;;
+esac
+```
+
 ```bash
 _TEL=$(~/.claude/skills/gstack/bin/gstack-config get telemetry 2>/dev/null || echo off)
 source ~/.claude/skills/gstack/bin/gstack-codex-probe || { echo "HELPER_UNAVAILABLE"; exit 1; }
@@ -589,8 +600,9 @@ above); never read the other two mode sections.
 
 **Reasoning effort override:** If the user's input contains `--xhigh` anywhere,
 note it and remove it from the prompt text before passing to Codex. When `--xhigh`
-is present, use `model_reasoning_effort="xhigh"` for all modes regardless of the
-per-mode default below. Otherwise, use the per-mode defaults:
+is present, use `model_reasoning_effort="xhigh"` for all modes regardless of
+`GSTACK_CODEX_EFFORT` or the per-mode default below. Otherwise `GSTACK_CODEX_EFFORT`
+overrides the per-mode defaults:
 - Review (2A): `high` — bounded diff input, needs thoroughness
 - Challenge (2B): `high` — adversarial but bounded by diff
 - Consult (2C): `medium` — large context, interactive, needs speed
@@ -785,7 +797,9 @@ nested skill run.
 
 `xhigh` uses ~23x more tokens than `high` and causes 50+ minute hangs on large context
 tasks (OpenAI issues #8545, #8402, #6931). Users can override with `--xhigh` flag
-(e.g., `/codex review --xhigh`) when they want maximum reasoning and are willing to wait.
+(e.g., `/codex review --xhigh`) when they want maximum reasoning and are willing to wait,
+or set `GSTACK_CODEX_EFFORT` as the default for every mode (same warning applies —
+`xhigh`/`max` pin that cost to every invocation).
 
 **Web search:** All codex commands pass `-c 'web_search="cached"'` so `codex exec`
 invocations can look up docs and APIs during review. This is OpenAI's cached index —
