@@ -285,6 +285,21 @@ esac
 
 # Bun versions come from one sourced file (floor and tested; E1).
 . "$(dirname "$0")/bin/gstack-bun-version.sh" 2>/dev/null || { echo "$0: bin/gstack-bun-version.sh is missing; nothing was installed or changed. Fix: reinstall gstack (git clone https://github.com/garrytan/gstack)" >&2; exit 1; }
+# A freshly installed bun lands in ~/.bun/bin (or %USERPROFILE%\.bun\bin) —
+# present on disk but absent from the invoking shell's PATH, because the
+# installer only amends NEW shells. Adopt it for this invocation before
+# declaring bun missing, or a re-run after installing bun still fails (#466).
+_adopt_installed_bun() {
+  command -v bun >/dev/null 2>&1 && return 0
+  local d
+  for d in "$HOME/.bun/bin" "${USERPROFILE:-$HOME}/.bun/bin" "${LOCALAPPDATA:-$HOME/.bun}/bin"; do
+    if [ -d "$d" ] && { [ -x "$d/bun" ] || [ -f "$d/bun.exe" ]; }; then
+      PATH="$d:$PATH"; export PATH; return 0
+    fi
+  done
+  return 1
+}
+_adopt_installed_bun || true
 if ! command -v bun >/dev/null 2>&1; then
   echo "Error: bun is required but not installed." >&2
   echo "Install with checksum verification:" >&2
@@ -293,6 +308,7 @@ if ! command -v bun >/dev/null 2>&1; then
   echo '  curl -fsSL "https://bun.sh/install" -o "$tmpfile"' >&2
   echo '  echo "Verify checksum before running: sha256sum $tmpfile   # or: shasum -a 256 $tmpfile"' >&2
   echo '  BUN_VERSION="$BUN_VERSION" bash "$tmpfile" && rm "$tmpfile"' >&2
+  echo "Already installed? Add its directory to PATH (usually ~/.bun/bin) and re-run ./setup." >&2
   exit 1
 fi
 _BUN_FOUND="$(bun --version 2>/dev/null | head -1)"

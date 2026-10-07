@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.35.0] - 2026-10-07
+
+**Re-running ./setup right after installing bun no longer demands a new shell.**
+
+The official bun installer drops the binary into `~/.bun/bin` and amends PATH only for *new* shells, so a `./setup` re-run in the same terminal still died with "bun is required" — the bug behind clones that ended with no skill symlinks at all. Setup now adopts the standard install location (`~/.bun/bin`, and `%USERPROFILE%\.bun\bin` on Windows) into PATH for the invocation when it finds a bun binary there, and the not-installed error now says where to point PATH if bun lives somewhere else.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**
