@@ -21,9 +21,9 @@ function fixture() {
   fs.mkdirSync(repo, { recursive: true });
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, timeout: 10_000 });
   const baseEnv = { PATH: process.env.PATH!, HOME: home, GIT_CEILING_DIRECTORIES: dir };
-  const write = (file: string, ageSeconds: number) => {
+  const write = (file: string, ageSeconds: number, content = '# Design\n') => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, '# Design\n');
+    fs.writeFileSync(file, content);
     const t = Date.now() / 1000 - ageSeconds;
     fs.utimesSync(file, t, t);
     return file;
@@ -82,6 +82,38 @@ describe('gstack-design-doc-find', () => {
   test('usage errors exit 2', () => {
     const f = fixture();
     expect(() => f.find({}, [])).toThrow();
+  });
+});
+
+describe('.claude/plans precedence (#542)', () => {
+  test('a newer plan-mode copy with the same first heading wins over the stale state doc', () => {
+    const f = fixture();
+    f.write(path.join(f.home, '.gstack/projects/proj/user-feat-x-design-1.md'), 100, '# Design: Widget\noriginal\n');
+    const plan = f.write(path.join(f.repo, '.claude/plans/edited-plan.md'), 10, '# Design: Widget\noriginal\nrefined interactively\n');
+    expect(f.find()).toBe(plan);
+  });
+
+  test('a newer plan file with a different heading never shadows the design doc', () => {
+    const f = fixture();
+    const doc = f.write(path.join(f.home, '.gstack/projects/proj/user-feat-x-design-1.md'), 100, '# Design: Widget\n');
+    f.write(path.join(f.repo, '.claude/plans/unrelated.md'), 10, '# Random plan: something else\n');
+    expect(f.find()).toBe(doc);
+  });
+
+  test('an older same-heading plan file loses to a fresher design doc', () => {
+    const f = fixture();
+    const doc = f.write(path.join(f.home, '.gstack/projects/proj/user-feat-x-design-1.md'), 10, '# Design: Widget\nrevised\n');
+    f.write(path.join(f.repo, '.claude/plans/old-copy.md'), 100, '# Design: Widget\n');
+    expect(f.find()).toBe(doc);
+  });
+
+  test('newest matching plan wins among several newer plan files', () => {
+    const f = fixture();
+    f.write(path.join(f.home, '.gstack/projects/proj/user-feat-x-design-1.md'), 200, '# Design: Widget\n');
+    f.write(path.join(f.repo, '.claude/plans/first.md'), 100, '# Design: Widget\nedit 1\n');
+    const second = f.write(path.join(f.repo, '.claude/plans/second.md'), 50, '# Design: Widget\nedit 2\n');
+    f.write(path.join(f.repo, '.claude/plans/other.md'), 10, '# Other doc\n');
+    expect(f.find()).toBe(second);
   });
 });
 

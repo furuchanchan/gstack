@@ -14,6 +14,10 @@
 #      design system /design-consultation writes, never a design doc (#2839).
 #      office-hours writes both copies; the committed copy is what teammates
 #      see, but a stale repo doc never shadows a newer private session.
+#   4. the newest .claude/plans/*.md NEWER than the winner wins when its first
+#      '# ' heading matches — plan mode mirrors the doc there and every later
+#      interactive edit lands in that copy (#542). A plan file with another
+#      heading is a different document and never shadows the design doc.
 set -u
 
 if [ "$#" -ne 2 ] || [ -z "$1" ]; then
@@ -40,6 +44,31 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null || true)
 DESIGN="$LOCALDOC"
 if [ -n "$REPODOC" ] && { [ -z "$LOCALDOC" ] || [ "$REPODOC" -nt "$LOCALDOC" ]; }; then
   DESIGN="$REPODOC"
+fi
+
+# #542: plan mode mirrors the doc into .claude/plans/<random>.md and all later
+# interactive edits land there. The newest same-doc plan file — identified by
+# a matching first '# ' heading — wins over the stale copy it forked from.
+plan_wins_over() {
+  local plans_dir="$1" design="$2" head_doc p head_p best=""
+  [ -n "$design" ] && [ -d "$plans_dir" ] || return 1
+  head_doc="$(grep -m1 '^# ' "$design" 2>/dev/null)"
+  [ -n "$head_doc" ] || return 1
+  for p in "$plans_dir"/*.md; do
+    [ -f "$p" ] && [ "$p" -nt "$design" ] || continue
+    head_p="$(grep -m1 '^# ' "$p" 2>/dev/null)"
+    [ "$head_p" = "$head_doc" ] || continue
+    if [ -z "$best" ] || [ "$p" -nt "$best" ]; then best="$p"; fi
+  done
+  [ -n "$best" ] && { printf '%s\n' "$best"; return 0; }
+  return 1
+}
+
+if [ -n "$DESIGN" ]; then
+  for plans_dir in "${TOP:+$TOP/.claude/plans}" ".claude/plans"; do
+    [ -n "$plans_dir" ] || continue
+    PLAN_HIT="$(plan_wins_over "$plans_dir" "$DESIGN")" && { DESIGN="$PLAN_HIT"; break; }
+  done
 fi
 [ -n "$DESIGN" ] && printf '%s\n' "$DESIGN"
 exit 0

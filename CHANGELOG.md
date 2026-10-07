@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.36.0] - 2026-10-07
+
+**Plan reviews now read the design doc you actually edited.**
+
+When /office-hours runs inside Claude Code's plan mode, the doc is mirrored to `.claude/plans/<random>.md` and every later interactive edit lands there — the `.gstack/projects/` copy goes stale, and plan reviews silently consumed the stale one. `gstack-design-doc-find` now checks `.claude/plans/` after its usual precedence and, when a plan file is newer than the chosen doc and carries the same first `# ` heading, returns the edited copy instead. A plan file with a different heading is a different document and never shadows the design doc.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**
