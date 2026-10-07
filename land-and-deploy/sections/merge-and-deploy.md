@@ -57,6 +57,7 @@ case "$PR_STATE" in
     elif [ "$MERGE_ATTEMPT" = auto ] && [ "$MERGE_EXIT" -ne 0 ]; then
       case "$MERGE_ERROR" in
         *"Auto-merge is not allowed for this repository"*|*"Pull request is in clean status"*|*"Pull request is in unstable status"*) MERGE_ACTION=DIRECT ;;
+        *"part of this repo's"*"organization"*|*"write permissions to the repo"*|*"can submit a PR to the queue"*) MERGE_ACTION=MAINTAINER_HANDOFF ;;
       esac
     fi ;;
 esac
@@ -64,6 +65,11 @@ printf '%s\n' "$MERGE_ACTION"
 ```
 
 Readback failure or unknown state: **STOP**, preserve command errors and do not merge.
+MAINTAINER_HANDOFF: the merge or queue submission was rejected for missing
+repo write/organization authority — `READY — MAINTAINER ACTION REQUIRED`.
+Terminal for this actor/session: report the remaining action (a maintainer
+approves held workflow runs, resolves base drift, submits/merges with
+maintainer authority), preserve the stderr, and do not retry the submission.
 HEAD_CHANGED/BASE_CHANGED: invalidate the approval, **STOP** and return through Step 1
 and readiness for the new target. MERGED_CHANGED: report the authoritative external
 merge, but **STOP** cleanup/deploy/rollback until the changed head/base is reconciled;

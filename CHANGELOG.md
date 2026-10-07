@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.46.0] - 2026-10-07
+
+**`gstack-ci-gate` reports `MAINTAINER_ACTION` when a PR's only red checks are `action_required` — maintainer-gated CI is no longer misread as a failure.**
+
+External-contributor PRs can be technically ready while every Actions run waits on maintainer approval (the #2658 case: eight `action_required` runs, repeated queue submissions rejected for missing write authority). The gate now counts approval-held checks separately: all-reds-are-`action_required` yields the new `MAINTAINER_ACTION` verdict (exit 5, terminal — `--wait` does not re-poll), while real failures and still-running checks keep `FAIL`/`PENDING` with the gated count named in a NOTE. `/land-and-deploy` reports `READY — MAINTAINER ACTION REQUIRED` with the remaining maintainer-side action instead of blocking or retrying, and a merge/queue submission rejected for missing write or organization authority resolves to a terminal handoff rather than a replayed attempt.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

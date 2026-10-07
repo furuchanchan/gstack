@@ -683,6 +683,12 @@ Auth/network/schema errors are ERROR, never "no required checks".
    re-poll): Step 3.5 must approve it.
 3. PENDING: Step 3. PASS: skip Step 3's wait;
    continue to Step 3.4, then Step 3.5 before merging.
+4. MAINTAINER_ACTION: **not a code failure.** Every red check is
+   `action_required` — runs are held for maintainer approval (typical on fork
+   PRs). Report `READY — MAINTAINER ACTION REQUIRED` with the remaining action
+   (a maintainer approves the held workflow runs, resolves any base drift,
+   then submits/merges with maintainer authority). Terminal for this actor:
+   do not wait, do not retry, do not attempt the merge yourself.
 
 Also check for merge conflicts:
 ```bash

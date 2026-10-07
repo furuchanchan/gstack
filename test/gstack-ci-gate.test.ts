@@ -110,9 +110,41 @@ describe('verdicts on synthetic gh output', () => {
     for (const bucket of ['pass', 'skipping', 'neutral']) {
       expect((await gate({ required: [NONE_REQUIRED], all: [ok([row('x', bucket)])] })).verdict).toBe('PASS');
     }
-    for (const bucket of ['cancel', 'fail', 'stale', 'action_required', '']) {
+    for (const bucket of ['cancel', 'fail', 'stale', '']) {
       expect((await gate({ required: [NONE_REQUIRED], all: [ok([row('x', bucket)])] })).verdict).toBe('FAIL');
     }
+  });
+
+  test('all action_required → MAINTAINER_ACTION handoff, not FAIL (#2766)', async () => {
+    const rows = [row('build', 'pass'), row('e2e', 'action_required'), row('lint', 'action_required'), row('docs', 'skipping')];
+    const result = await gate({ required: [NONE_REQUIRED], all: [ok(rows)] });
+    expect(result.verdict).toBe('MAINTAINER_ACTION');
+    expect(checkLines(result.lines)).toEqual([
+      `CHECK\te2e\taction_required\trequired=n\thttps://ci.example/e2e`,
+      `CHECK\tlint\taction_required\trequired=n\thttps://ci.example/lint`,
+    ]);
+    expect(result.lines.some(line => line.includes('2 check(s) report action_required') && line.includes('READY — MAINTAINER ACTION REQUIRED'))).toBe(true);
+  });
+
+  test('mixed fail + action_required stays FAIL with the gated count explicit (#2766)', async () => {
+    const rows = [row('build', 'fail'), row('e2e', 'action_required'), row('lint', 'action_required')];
+    const result = await gate({ required: [NONE_REQUIRED], all: [ok(rows)] });
+    expect(result.verdict).toBe('FAIL');
+    expect(result.lines.some(line => line.includes('2 check(s) report action_required'))).toBe(true);
+  });
+
+  test('pending + action_required stays PENDING with the gated count explicit (#2766)', async () => {
+    const rows = [row('build', 'pending'), row('e2e', 'action_required')];
+    const result = await gate({ required: [NONE_REQUIRED], all: [ok(rows)] });
+    expect(result.verdict).toBe('PENDING');
+    expect(result.lines.some(line => line.includes('1 check(s) report action_required'))).toBe(true);
+  });
+
+  test('MAINTAINER_ACTION is terminal — --wait does not re-poll (#2766)', async () => {
+    const gh = fakeGh({ required: [NONE_REQUIRED], all: [ok([row('e2e', 'action_required')])] });
+    const result = await runCiGate(options({ waitSeconds: 240, intervalSeconds: 1 }), gh, noSleep);
+    expect(result.verdict).toBe('MAINTAINER_ACTION');
+    expect(gh.calls.filter(args => args[1] === 'checks').length).toBe(2);
   });
 
   test('fail outranks pending', async () => {
@@ -273,13 +305,14 @@ describe('CLI contract', () => {
   };
   const base = ['--repo', 'owner/project', '--pr', '42', '--expect-head', HEAD, '--registration-wait', '0'];
 
-  test('VERDICT is the first line and exit codes are 0/1/2/3/4', async () => {
+  test('VERDICT is the first line and exit codes are 0-5', async () => {
     const cases: Array<[Script, string, number]> = [
       [{ required: [NONE_REQUIRED], all: [ok([row('b', 'pass')])] }, 'PASS', 0],
       [{ required: [NONE_REQUIRED], all: [ok([row('b', 'fail')])] }, 'FAIL', 1],
       [{ required: [NONE_REQUIRED], all: [ok([row('b', 'pending')])] }, 'PENDING', 2],
       [{ required: [NONE], all: [NONE] }, 'NO_CHECKS', 3],
       [{ required: [NONE_REQUIRED], all: [err('HTTP 502')] }, 'ERROR', 4],
+      [{ required: [NONE_REQUIRED], all: [ok([row('b', 'action_required')])] }, 'MAINTAINER_ACTION', 5],
     ];
     for (const [script, verdict, code] of cases) {
       const result = await run(base, fakeGh(script));
@@ -291,7 +324,8 @@ describe('CLI contract', () => {
   test('--help documents the verdicts and exit codes', async () => {
     const result = await run(['--help']);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('Exit codes: 0 PASS, 1 FAIL, 2 PENDING, 3 NO_CHECKS, 4 ERROR.');
+    expect(result.out).toContain('Exit codes: 0 PASS, 1 FAIL, 2 PENDING, 3 NO_CHECKS, 4 ERROR,');
+    expect(result.out).toContain('5 MAINTAINER_ACTION');
     expect(result.out).toContain('--expect-head');
   });
 

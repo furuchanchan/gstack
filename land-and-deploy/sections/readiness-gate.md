@@ -249,7 +249,8 @@ Build the full readiness report:
 ╠══════════════════════════════════════════════════════════╣
 ║  PR: #NNN — title                                        ║
 ║  Branch: feature → main                                  ║
-║  CI (head <sha7>): PASS / FAIL / PENDING / NO CI RAN     ║
+║  CI (head <sha7>): PASS / FAIL / PENDING / NO CI RAN /   ║
+║                    MAINTAINER ACTION REQUIRED            ║
 ║  REVIEWS                                                 ║
 ║  ├─ Eng Review:    CURRENT / STALE (N commits) / —       ║
 ║  ├─ CEO Review:    CURRENT / — (optional)                ║
@@ -269,7 +270,12 @@ Build the full readiness report:
 ╚══════════════════════════════════════════════════════════╝
 ```
 
-CI row: ERROR or red/pending `required=y|?` checks are BLOCKERS. Red/pending
+CI row: ERROR or red/pending `required=y|?` checks are BLOCKERS. A
+`MAINTAINER_ACTION` gate verdict (every red check `action_required`) is not a
+blocker and not an approval question — it is a maintainer handoff: show the
+report, mark CI `READY — MAINTAINER ACTION REQUIRED`, and **STOP** with the
+remaining action (a maintainer approves the held runs, resolves any base
+drift, then submits/merges with maintainer authority). Red/pending
 `required=n` checks or NO_CHECKS first need one-way question
 `land-and-deploy-ci-override` / `land-and-deploy-no-ci-confirm`, naming each check
 (or "no CI ran on `<sha>`"): A) exclude exactly these / accept no CI, this head → set

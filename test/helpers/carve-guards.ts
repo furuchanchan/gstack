@@ -537,7 +537,7 @@ do not launch the downstream skill or open a browser.`,
     },
     behavioral: 'prompt',
     maxSkeletonBytes: 74_500, // + Aside browser contract for Step 7 canary ({{ASIDE_SETUP}}); measured 73_523
-    maxSizeRatio: 1.100, // + v1.81 Aside contract + gstack-browser fallback block; measured 1.077. + both untrusted-content marker formats in the browser fallback (W7f) + the readiness gate's project test command and live eval-store paths (s06 H6/H7); measured 1.1076 (2026-10-02). Re-measured 1.0943 (2026-10-03); cap = measured + 0.005 headroom.
+    maxSizeRatio: 1.120, // + v1.81 Aside contract + gstack-browser fallback block; measured 1.077. + both untrusted-content marker formats in the browser fallback (W7f) + the readiness gate's project test command and live eval-store paths (s06 H6/H7); measured 1.1076 (2026-10-02). Re-measured 1.0943 (2026-10-03); cap = measured + 0.005 headroom. + #2766 MAINTAINER_ACTION handoff classification (Step 2 verdict, CI row, merge-queue permission rejection → MAINTAINER_HANDOFF); measured 1.113 (2026-10-07).
     minUnionBytes: 91_000, // Phase 4 wave 1; estimated union ~94.9KB
     mustContain: ['readiness', 'merge', 'canary', 'revert', 'staging'],
   },

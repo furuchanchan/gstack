@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
-export type CiVerdict = 'PASS' | 'FAIL' | 'PENDING' | 'NO_CHECKS' | 'ERROR';
-export const CI_GATE_EXIT: Record<CiVerdict, number> = { PASS: 0, FAIL: 1, PENDING: 2, NO_CHECKS: 3, ERROR: 4 };
+export type CiVerdict = 'PASS' | 'FAIL' | 'PENDING' | 'NO_CHECKS' | 'ERROR' | 'MAINTAINER_ACTION';
+export const CI_GATE_EXIT: Record<CiVerdict, number> = { PASS: 0, FAIL: 1, PENDING: 2, NO_CHECKS: 3, ERROR: 4, MAINTAINER_ACTION: 5 };
 export const MIN_GH_VERSION = '2.50.0';
 
 export interface GhResult { status: number | null; stdout: string; stderr: string; error?: string }
@@ -40,15 +40,20 @@ PR head, gates on every check (required ones and all others), and re-reads the
 head afterwards; a moved head is ERROR.
 
 Output (stdout), always first:
-  VERDICT <PASS|FAIL|PENDING|NO_CHECKS|ERROR> <sha>
+  VERDICT <PASS|FAIL|PENDING|NO_CHECKS|ERROR|MAINTAINER_ACTION> <sha>
 then one line per non-passing check:
   CHECK<TAB>name<TAB>bucket<TAB>required=y|n|?<TAB>link[<TAB>excluded|override-refused]
 then NOTE / HEAD / CAUSE / STDERR / FIX lines. Act on the VERDICT line, not the exit code.
 
-Exit codes: 0 PASS, 1 FAIL, 2 PENDING, 3 NO_CHECKS, 4 ERROR.
+Exit codes: 0 PASS, 1 FAIL, 2 PENDING, 3 NO_CHECKS, 4 ERROR,
+5 MAINTAINER_ACTION (every red check is action_required — the PR is gated
+on maintainer approval, not on a code failure; terminal for this actor,
+waiting or retrying changes nothing).
 
 Buckets: pass, skipping and neutral pass; pending waits; fail, cancel and any
 unknown bucket fail; a missing bucket field is ERROR (needs gh >= ${MIN_GH_VERSION}).
+action_required counts as a red check, but a verdict whose only reds are
+action_required is MAINTAINER_ACTION instead of FAIL.
 
 Options:
   --exclude NAME          drop one named non-required check from the verdict
@@ -136,15 +141,36 @@ export function evaluateChecks(required: GhResult, all: GhResult, excludes: stri
     else if (row.required === 'n') excluded.add(name);
   }
   let worst: Klass = 'pass';
+  let approvalGated = 0;
+  let pendingCount = 0;
+  let realFail = 0;
   for (const row of [...rows.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const klass = bucketClass(row.bucket);
     const isExcluded = excluded.has(row.name);
-    if (!isExcluded && RANK[klass] > RANK[worst]) worst = klass;
+    if (!isExcluded) {
+      if (RANK[klass] > RANK[worst]) worst = klass;
+      if (klass === 'fail') {
+        if (row.bucket === 'action_required') approvalGated++;
+        else realFail++;
+      } else if (klass === 'pending') pendingCount++;
+    }
     if (klass === 'pass') continue;
     const marker = isExcluded ? '\texcluded' : excludes.includes(row.name) ? '\toverride-refused' : '';
     lines.push(`CHECK\t${row.name}\t${row.bucket}\trequired=${row.required}\t${row.link}${marker}`);
   }
-  const verdict = worst === 'fail' ? 'FAIL' : worst === 'pending' ? 'PENDING' : 'PASS';
+  // `action_required` is not a code failure: it means the run is held for
+  // maintainer approval (fork PRs, or repos requiring approval for all
+  // contributors). Only verdict it alone when nothing else is red — real
+  // failures still FAIL and still-running work still PENDING, both with the
+  // approval-gated count made explicit (#2766).
+  const verdict =
+    realFail > 0 ? 'FAIL' :
+    pendingCount > 0 ? 'PENDING' :
+    approvalGated > 0 ? 'MAINTAINER_ACTION' :
+    worst === 'fail' ? 'FAIL' : worst === 'pending' ? 'PENDING' : 'PASS';
+  if (approvalGated > 0) {
+    notes.push(`NOTE ${approvalGated} check(s) report action_required — held for maintainer approval; a maintainer must approve the workflows or submit the PR (READY — MAINTAINER ACTION REQUIRED, do not retry as the author)`);
+  }
   return { verdict, lines: [...lines, ...notes] };
 }
 
