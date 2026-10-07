@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.91.44.0] - 2026-10-07
+
+**/context-restore now finds the checkpoint the slug can't see — one saved from a repo nested below you, or the newer continuation a sibling worktree just wrote.** Both cases used to hand back an older checkpoint with no error: a save from `mono/pkg` lives in pkg's bucket, which non-git `mono/` never resolves, so the parent offered a stale save instead; and a plan saved on `master` outranked the newer worktree save that continued it, because candidates are ordered current-branch-first. Step 1 now also scans the newest files of every other bucket for a `project_root:` below the working directory and lists them as `NESTED`, and it prints `NEWER_CROSS_BRANCH <path>` when a newer verified checkpoint exists on another branch — Step 2 then shows both and proposes the newer one when its title names the same task, without touching the current-branch preference that keeps unrelated sibling saves from shadowing yours.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

@@ -137,9 +137,31 @@ EOF
       if [ "$FOREIGN_N" -gt 0 ]; then
         echo "SHARED_BUCKET: $FOREIGN_N checkpoint(s) here were saved by another project"
       fi
+      # A newer same-repo checkpoint on another branch can be the direct
+      # continuation of this branch's latest (a sibling worktree taking over):
+      # surface it so the current-branch preference never hides it.
+      OTHER_NEWEST=$(printf '%s' "$OTHER" | grep -v '^[[:space:]]*$' | head -1)
+      SAME_NEWEST=$(printf '%s' "$SAME" | grep -v '^[[:space:]]*$' | head -1)
+      if [ -n "$SAME_NEWEST" ] && [ -n "$OTHER_NEWEST" ] \
+        && [ "$(printf '%s\n%s\n' "$OTHER_NEWEST" "$SAME_NEWEST" | sort -r | head -1)" = "$OTHER_NEWEST" ] \
+        && printf '%s\n' "$FILES" | grep -qxF "$OTHER_NEWEST"; then
+        echo "NEWER_CROSS_BRANCH $OTHER_NEWEST"
+      fi
     fi
   fi
 fi
+# A checkpoint saved from a repository nested BELOW this directory lives in that
+# repo's bucket, which this cwd's slug never resolves (non-git parent or a save
+# from a subdirectory). Scan the newest files of every other bucket for a
+# project_root below the cwd and surface them to the user.
+NESTED=$(find "$GSTACK_STATE_ROOT/projects" -mindepth 3 -maxdepth 3 -name "*.md" -type f 2>/dev/null \
+  | sort -r | head -400 \
+  | while IFS= read -r f; do
+      case "$f" in "$CHECKPOINT_DIR"/*) continue;; esac
+      pr=$(grep -m1 '^project_root:' "$f" 2>/dev/null | sed 's/^project_root:[[:space:]]*//;s/[[:space:]]*$//')
+      case "$pr" in "$PWD"/*) printf '%s\n' "$f";; esac
+    done | head -10)
+if [ -n "$NESTED" ]; then printf '%s\n' "$NESTED" | sed 's/^/NESTED /'; fi
 ```
 
 **Candidates include every `.md` file in the directory**, but they are ordered
@@ -165,6 +187,17 @@ has written to). Prefixed lines are never candidates for "latest":
 - Otherwise: load the **first plain path line returned by Step 1 above**, which
   is the newest `YYYYMMDD-HHMMSS` checkpoint of this project for the current
   branch, or, if the current branch has none, the newest across all branches.
+- If Step 1 printed `NEWER_CROSS_BRANCH <path>`: a newer checkpoint of this
+  project exists on another branch — usually a sibling worktree continuing the
+  same task (a plan saved on `master`, implementation continued on the ticket
+  branch). Load both files, and when the newer one's title names the same task,
+  propose it as the continuation instead of silently restoring the older
+  current-branch save. The current-branch preference exists to stop an
+  *unrelated* sibling save from shadowing yours, not to hide a continuation.
+- If Step 1 printed `NESTED <path>` lines: those checkpoints were saved from a
+  repository nested below this directory and live in that repo's bucket — this
+  directory never resolves it, so they are easy to miss. List their titles and
+  offer to open one; never present them as this project's latest.
 - If Step 1 printed `NO_VERIFIED_CHECKPOINTS` or `IDENTITY_CHECK_FAILED`, do not
   present any checkpoint as the latest one. Say "No checkpoint in this directory
   is verified as this project's", list the `FOREIGN`/`UNVERIFIED` titles with the

@@ -208,6 +208,57 @@ describe('context-restore never presents another project checkpoint as latest', 
   });
 });
 
+describe('context-restore surfaces saves the slug cannot reach (#3065)', () => {
+  test('saved from a nested repo, restored from a non-git parent: the checkpoint is offered as NESTED', () => {
+    // mono/ is not a git repo; mono/pkg is. A save from inside pkg lands in
+    // pkg's bucket, which mono's slug never resolves — before this fix the
+    // parent saw only an unrelated older checkpoint or nothing at all.
+    const mono = path.join(tmp, 'mono');
+    fs.mkdirSync(mono);
+    const pkg = path.join(mono, 'pkg');
+    fs.mkdirSync(pkg);
+    for (const args of [['init', '-q', '-b', 'main'], ['remote', 'add', 'origin', 'git@gitlab.com:grp/sub/repo.git']]) {
+      spawnSync('git', args, { cwd: pkg, encoding: 'utf-8', timeout: 30_000 });
+    }
+    const file = save(pkg, 'nested repo work', '20261001-120000');
+    expect(file.startsWith(path.join(home, 'projects', 'sub-repo-'))).toBe(true);
+
+    const r = restore(mono);
+    expect(r.out).toContain('NO_CHECKPOINTS');
+    expect(r.candidates).not.toContain(file);
+    expect(r.lines).toContain(`NESTED ${file}`);
+  });
+
+  test('a newer same-repo checkpoint on another branch is surfaced as NEWER_CROSS_BRANCH', () => {
+    // Plan saved on master, implementation continued on the ticket branch (a
+    // sibling worktree): branch-first ordering must still name the newer save.
+    const r0 = repo('proj', 'git@gitlab.com:grp/proj.git');
+    const plan = save(r0, 'ticket 42 plan', '20261001-100000', 'master');
+    const impl = save(r0, 'ticket 42 implementation', '20261001-120000', 'feature/42-thing');
+
+    const r = restore(r0, 'master');
+    // Current-branch preference is unchanged: the master save stays the first
+    // candidate, but the newer continuation is named instead of hidden.
+    expect(r.latest).toBe(plan);
+    expect(r.lines).toContain(`NEWER_CROSS_BRANCH ${impl}`);
+  });
+
+  test('no NEWER_CROSS_BRANCH when the other-branch save is older or foreign', () => {
+    const r0 = repo('proj2', 'git@gitlab.com:grp/proj2.git');
+    const older = save(r0, 'old experiment', '20261001-100000', 'feature/x');
+    const newer = save(r0, 'current work', '20261001-120000', 'master');
+    const r = restore(r0, 'master');
+    expect(r.latest).toBe(newer);
+    expect(r.out).not.toContain('NEWER_CROSS_BRANCH');
+    expect(r.candidates).toContain(older);
+
+    const other = repo('foreign-proj', 'git@github.com:other/foreign-proj.git');
+    const foreign = save(other, 'other project save', '20261002-120000', 'main');
+    const r2 = restore(r0, 'master');
+    expect(r2.out).not.toContain(`NEWER_CROSS_BRANCH ${foreign}`);
+  });
+});
+
 describe('gstack-slug --adopt-legacy', () => {
   function adopt(cwd: string, ...args: string[]) {
     const r = spawnSync('bash', [SLUG_BIN, '--adopt-legacy', ...args], {
