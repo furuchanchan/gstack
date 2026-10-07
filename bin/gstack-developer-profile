@@ -7,6 +7,9 @@
 # Subcommands:
 #   --read              (default)  emit KEY: VALUE pairs in builder-profile format
 #                                  for /office-hours compatibility.
+#                       [--exclude-session <id>] counts sessions[] entries
+#                       without the given session_id — used by /office-hours
+#                       so the closing tier ignores this run's own append.
 #   --derive            recompute inferred dimensions from question events;
 #                       write updated ~/.gstack/developer-profile.json.
 #   --profile           emit the full profile as JSON (all fields).
@@ -228,19 +231,31 @@ do_log_session() {
 
 # -----------------------------------------------------------------------
 # Read: emit legacy KEY: VALUE output for /office-hours compat.
+# --exclude-session <id> drops entries recorded under that session id —
+# /office-hours passes its own SESSION_ID so the closing tier reflects
+# state as of before this run's Phase 4.5 write (#2801). Entries logged
+# before session_id existed carry no id and are always counted.
 # -----------------------------------------------------------------------
 do_read() {
+  local EXCLUDE_ID=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --exclude-session) EXCLUDE_ID="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
   ensure_profile
-  cat "$PROFILE_FILE" | bun -e "
+  cat "$PROFILE_FILE" | EXCLUDE_SESSION_ID="$EXCLUDE_ID" bun -e "
     const p = JSON.parse(await Bun.stdin.text());
     const sessions = p.sessions || [];
+    const excludeId = process.env.EXCLUDE_SESSION_ID || '';
 
     // SESSION_COUNT / TIER / CROSS_PROJECT / NUDGE must reflect real sessions, not
     // resource-tracking events (the Phase 6 auto-append). Without this filter, a
     // session's resources entry written immediately after the real session inflates
     // the count (bumping TIER), clobbers LAST_PROJECT/LAST_ASSIGNMENT/LAST_DESIGN_TITLE,
     // and pushes NUDGE_ELIGIBLE over its threshold from bookkeeping alone.
-    const realSessions = sessions.filter(e => e.mode !== 'resources');
+    const realSessions = sessions.filter(e => e.mode !== 'resources' && e.session_id !== excludeId);
 
     const count = realSessions.length;
     let tier = 'introduction';
@@ -519,7 +534,7 @@ do_vibe() {
 # Dispatch
 # -----------------------------------------------------------------------
 case "$CMD" in
-  --read) do_read ;;
+  --read) do_read "$@" ;;
   --profile) do_profile ;;
   --gap) do_gap ;;
   --derive) do_derive ;;

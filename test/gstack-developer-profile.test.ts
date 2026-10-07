@@ -91,6 +91,68 @@ describe('gstack-developer-profile --read', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('TIER:');
   });
+
+  // #2801: Phase 4.5 logs this run's entry before Phase 6 reads the tier, so a
+  // first session read itself as welcome_back. --exclude-session drops entries
+  // recorded under the caller's own session id.
+  test('--exclude-session ignores entries logged under that session id', () => {
+    runDev(
+      '--log-session',
+      JSON.stringify({
+        date: '2026-10-01T00:00:00Z',
+        mode: 'startup',
+        project_slug: 'alpha',
+        signals: ['taste'],
+        design_doc: '/tmp/a.md',
+        assignment: 'this run assignment',
+        session_id: 'run-1',
+      }),
+    );
+    const counted = runDev('--read');
+    expect(counted.stdout).toContain('SESSION_COUNT: 1');
+    expect(counted.stdout).toContain('TIER: welcome_back');
+    expect(counted.stdout).toContain('LAST_ASSIGNMENT: this run assignment');
+
+    const excluded = runDev('--read', '--exclude-session', 'run-1');
+    expect(excluded.stdout).toContain('SESSION_COUNT: 0');
+    expect(excluded.stdout).toContain('TIER: introduction');
+    expect(excluded.stdout).toContain('LAST_ASSIGNMENT: ');
+  });
+
+  test('--exclude-session still counts prior sessions and entries without a session id', () => {
+    writeLegacyProfile([
+      {
+        date: '2026-03-01',
+        mode: 'builder',
+        project_slug: 'alpha',
+        signals: ['taste'],
+        resources_shown: [],
+        topics: [],
+        design_doc: '/tmp/a.md',
+        assignment: 'earlier run',
+      },
+    ]);
+    runDev('--migrate');
+    runDev(
+      '--log-session',
+      JSON.stringify({
+        date: '2026-10-01T00:00:00Z',
+        mode: 'startup',
+        project_slug: 'alpha',
+        signals: ['taste'],
+        design_doc: '/tmp/b.md',
+        assignment: 'this run assignment',
+        session_id: 'run-1',
+      }),
+    );
+
+    const excluded = runDev('--read', '--exclude-session', 'run-1');
+    expect(excluded.stdout).toContain('SESSION_COUNT: 1');
+    expect(excluded.stdout).toContain('TIER: welcome_back');
+    expect(excluded.stdout).toContain('LAST_ASSIGNMENT: earlier run');
+    const other = runDev('--read', '--exclude-session', 'no-such-run');
+    expect(other.stdout).toContain('SESSION_COUNT: 2');
+  });
 });
 
 // -----------------------------------------------------------------------

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.91.40.0] - 2026-10-09
+
+**/office-hours no longer reads its own Phase 4.5 entry as returning-user history.**
+
+Phase 4.5 appends this session to `developer-profile.json`, and Phase 6 then
+read the same file to pick a closing tier — so a genuine first session got
+`SESSION_COUNT: 1` / `TIER: welcome_back` and was asked how the assignment it
+was just issued "went" (#2801). Phase 4.5's `--log-session` payload now carries
+the preamble `SESSION_ID`, `gstack-developer-profile --read` accepts
+`--exclude-session <id>`, and Phase 6 Step 1 passes the run's own id — the
+closing tier reflects state as of before this run. Older entries carry no
+`session_id` and are still counted.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

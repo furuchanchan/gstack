@@ -1263,14 +1263,16 @@ Append one JSON line with these fields (substitute actual values from this sessi
 - `assignment`: the assignment you will give in the design doc's "The Assignment" section
 - `resources_shown`: empty array `[]` for now (populated after resource selection in Phase 6)
 - `topics`: array of 2-3 topic keywords that describe what this session was about
+- `session_id`: the `SESSION_ID` value the preamble's skill-start output echoed — lets Phase 6 exclude this run's own entry when it picks the closing tier
 
 ```bash
-~/.claude/skills/gstack/bin/gstack-developer-profile --log-session '{"date":"TIMESTAMP","mode":"MODE","project_slug":"SLUG","signal_count":N,"signals":SIGNALS_ARRAY,"design_doc":"DOC_PATH","assignment":"ASSIGNMENT_TEXT","resources_shown":[],"topics":TOPICS_ARRAY}' 2>/dev/null || true
+~/.claude/skills/gstack/bin/gstack-developer-profile --log-session '{"date":"TIMESTAMP","mode":"MODE","project_slug":"SLUG","signal_count":N,"signals":SIGNALS_ARRAY,"design_doc":"DOC_PATH","assignment":"ASSIGNMENT_TEXT","resources_shown":[],"topics":TOPICS_ARRAY,"session_id":"SESSION_ID"}' 2>/dev/null || true
 ```
 
 The session entry is appended to `developer-profile.json`'s `sessions[]` array. A second
 session entry with `mode: "resources"` is appended via `--log-session` after resource
-selection in Phase 6 (Founder Resources).
+selection in Phase 6 (Founder Resources). Phase 6's profile read passes
+`--exclude-session "SESSION_ID"` so this entry does not count toward its own tier.
 
 ---
 

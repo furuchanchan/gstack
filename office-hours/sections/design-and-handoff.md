@@ -342,8 +342,12 @@ over time.
 
 ### Step 1: Read Builder Profile
 
+Pass `--exclude-session` with the `SESSION_ID` the preamble's skill-start output echoed
+(literal substitution — shell variables do not survive between Bash calls), so the
+entry this run appended in Phase 4.5 does not count toward its own closing tier:
+
 ```bash
-PROFILE=$(~/.claude/skills/gstack/bin/gstack-builder-profile 2>/dev/null) || PROFILE="SESSION_COUNT: 0
+PROFILE=$(~/.claude/skills/gstack/bin/gstack-builder-profile --exclude-session "SESSION_ID" 2>/dev/null) || PROFILE="SESSION_COUNT: 0
 TIER: introduction"
 SESSION_TIER=$(echo "$PROFILE" | grep "^TIER:" | awk '{print $2}')
 SESSION_COUNT=$(echo "$PROFILE" | grep "^SESSION_COUNT:" | awk '{print $2}')
