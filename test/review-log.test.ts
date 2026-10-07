@@ -261,6 +261,35 @@ describe('gstack-wtree', () => {
 });
 
 describe('gstack-review-read', () => {
+  test('merges sibling branch files with source_branch tags, current branch last (#280)', () => {
+    // Write one row through the real logger (lands in <branch>-reviews.jsonl).
+    run('{"skill":"plan-eng-review","status":"clean"}');
+    const slugDirs = fs.readdirSync(slugDir);
+    const projDir = path.join(slugDir, slugDirs[0]);
+    const files = fs.readdirSync(projDir).filter(f => f.endsWith('-reviews.jsonl'));
+    expect(files.length).toBe(1);
+    const curFile = files[0];
+    // A sibling file from a different branch holding a plan-skill row.
+    fs.writeFileSync(path.join(projDir, 'other-feat-reviews.jsonl'),
+      '{"skill":"plan-ceo-review","status":"done","source_branch":"forged"}\n');
+
+    const out = execSync(`${BIN}/gstack-review-read`, {
+      cwd: ROOT,
+      env: { ...process.env, GSTACK_HOME: tmpDir },
+      encoding: 'utf-8',
+      timeout: 15000,
+    });
+    const rows = out.split('---CONFIG---')[0].trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+    expect(rows.length).toBe(2);
+    // Both branches' rows are visible; source_branch comes from the filename
+    // stem — a forged value in the row cannot stand in for it.
+    expect(rows[0].source_branch).toBe('other-feat');
+    expect(rows[0].skill).toBe('plan-ceo-review');
+    const curStem = curFile.replace(/-reviews\.jsonl$/, '');
+    expect(rows[1].source_branch).toBe(curStem);
+    expect(rows[1].skill).toBe('plan-eng-review');
+  });
+
   test('emits ---WTREE---, ---TREE--- and ---DIRTY--- sections', () => {
     const out = execSync(`${BIN}/gstack-review-read`, {
       cwd: ROOT,

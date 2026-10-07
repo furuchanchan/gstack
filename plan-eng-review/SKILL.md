@@ -15,6 +15,15 @@ triggers:
   - review architecture
   - eng plan review
   - check the implementation plan
+gbrain:
+  schema: 1
+  context_queries:
+    - id: prior-ceo-plans
+      kind: filesystem
+      glob: "{gstack_state_root}/projects/{repo_slug}/ceo-plans/*.md"
+      sort: mtime_desc
+      limit: 3
+      render_as: "## Prior CEO plans for this project"
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->

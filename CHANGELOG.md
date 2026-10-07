@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.37.0] - 2026-10-07
+
+**Skill chains see each other across branches: review rows are project-scoped, and /plan-eng-review finds prior CEO plans.**
+
+Review JSONL was branch-scoped (`<branch>-reviews.jsonl`) while the workflow is not — office-hours on `main`, then `/plan-eng-review` on a feature branch saw an empty log. `gstack-review-read` now merges every `*-reviews.jsonl` in the project, tags each row `source_branch` from its filename stem (a forged field in the row is overwritten), and keeps the current branch's rows last so tail readers see unchanged semantics; diff-scoped rows are still graded against the live working tree, so a stale cross-branch verdict cannot falsely clear a gate. Separately, `/plan-eng-review` gains the same `prior-ceo-plans` context query `/plan-ceo-review` already publishes — it previously had zero discovery for `ceo-plans/`.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**
