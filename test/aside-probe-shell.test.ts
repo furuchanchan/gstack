@@ -72,6 +72,15 @@ describe('emitted Aside readiness probe', () => {
       const kernel = spawnSync('uname', [], { encoding: 'utf8' }).stdout.trim();
       expect(run(shell, 'none', 'absent', false, '').output).toBe(`NEEDS_ASIDE: ${kernel}\n`);
     });
+    shellTest(`${shell}: off-macOS short-circuits before any Aside lookup, even an installed one (#2864)`, () => {
+      // 'ready' installs a working aside stub — NEEDS_ASIDE plus an empty call
+      // log proves the binary was never consulted.
+      for (const platform of ['Linux', 'Windows']) {
+        const result = run(shell, 'none', 'ready', false, platform);
+        expect(result.output).toBe(`NEEDS_ASIDE: ${platform}\n`);
+        expect(result.calls).toBe('');
+      }
+    });
     for (const arm of ['gtimeout', 'timeout', 'perl'] as const) {
       const armTest = Bun.which(shell) && launchers[arm] ? test : test.skip;
       armTest(`${shell}/${arm}: forwards the complete script as one argument`, () => {

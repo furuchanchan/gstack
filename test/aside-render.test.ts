@@ -367,7 +367,7 @@ process.exit(0);
 
 function runDriver<T>(driver: string, job: Record<string, unknown>, opts: { binDir?: string; env?: Record<string, string> } = {}): T {
   const env: Record<string, string> = { ...(process.env as Record<string, string>), PATH: opts.binDir ? `${opts.binDir}:${SYSTEM_PATH}` : SYSTEM_PATH };
-  for (const k of ['GSTACK_SKIP_ASIDE', 'GSTACK_BROWSE_BIN', 'BROWSE_BIN', 'GSTACK_RENDER_SLACK_MS']) delete env[k]; // the operator's shell must not steer the fakes
+  for (const k of ['GSTACK_SKIP_ASIDE', 'GSTACK_BROWSE_BIN', 'BROWSE_BIN', 'GSTACK_RENDER_SLACK_MS', 'GSTACK_PLATFORM']) delete env[k]; // the operator's shell must not steer the fakes
   Object.assign(env, opts.env ?? {});
   // process.execPath: an absolute bun, since the child PATH deliberately omits the operator's bin dirs. cwd is the temp dir so no repo .env is auto-loaded.
   const r = spawnSync(process.execPath, [driver, JSON.stringify(job)], { encoding: 'utf8', timeout: 60_000, cwd: path.dirname(driver), env });
@@ -383,9 +383,11 @@ describe.skipIf(!HERMETIC)('aside-render: probeAside classifies a fake CLI the w
   let driver: string;
   beforeAll(() => { fs.mkdirSync(bin); driver = writeDriver(tmp); });
   afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  // GSTACK_PLATFORM: 'Darwin' simulates the one host Aside ships for — the
+  // platform gate short-circuits everything else off macOS.
   const probe = (env?: Record<string, string>): AsideProbe => {
     fs.rmSync(log, { force: true });
-    return runDriver<AsideProbe>(driver, { fn: 'probeAside', timeoutMs: 5_000 }, { binDir: bin, env });
+    return runDriver<AsideProbe>(driver, { fn: 'probeAside', timeoutMs: 5_000 }, { binDir: bin, env: { GSTACK_PLATFORM: 'Darwin', ...env } });
   };
 
   test('no `aside` on PATH → NEEDS_ASIDE (install it), never "not running"', () => {
@@ -441,6 +443,16 @@ describe.skipIf(!HERMETIC)('aside-render: probeAside classifies a fake CLI the w
     expect(r.reason).toBe('NEEDS_ASIDE');
     expect(r.detail).toContain('GSTACK_SKIP_ASIDE=1');
     expect(fs.existsSync(log)).toBe(false);
+  });
+
+  test('a non-macOS host → NEEDS_ASIDE without consulting the CLI at all (#2864)', () => {
+    writeFakeAside(bin, { repl: 'echo "ASIDE_READY /x"', log });
+    const r = probe({ GSTACK_PLATFORM: 'Linux' });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toBe('NEEDS_ASIDE');
+    expect(r.detail).toContain('macOS 15+');
+    expect(fs.existsSync(log)).toBe(false); // never spawned — no Linux build exists to probe
   });
 });
 

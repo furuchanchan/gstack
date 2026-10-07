@@ -610,8 +610,10 @@ Check once per run that Aside is ready (reuse an actual result from earlier in t
 ```bash
 _gs_d() { if command -v gtimeout >/dev/null; then gtimeout 30 "$@"; elif command -v timeout >/dev/null; then timeout 30 "$@"
 elif command -v perl >/dev/null; then perl -e 'alarm(shift);exec(@ARGV)' 30 "$@"; else return 125; fi; }
-_A=aside; command -v aside >/dev/null || _A=$(command -v ~/.local/bin/aside)
-if [ "${GSTACK_SKIP_ASIDE:-}" = "1" ] || [ -z "$_A" ]; then
+if [ "${GSTACK_PLATFORM:-$(uname)}" = "Darwin" ]; then
+  _A=aside; command -v aside >/dev/null || _A=$(command -v ~/.local/bin/aside)
+fi
+if [ "${GSTACK_PLATFORM:-$(uname)}" != "Darwin" ] || [ "${GSTACK_SKIP_ASIDE:-}" = "1" ] || [ -z "${_A:-}" ]; then
   echo "NEEDS_ASIDE: ${GSTACK_PLATFORM:-$(uname)}"
 else
   _rc=0; _o=$(_gs_d "$_A" repl 'console.log("ASIDE_READY " + pwd)' 2>&1) || _rc=$?

@@ -119,10 +119,13 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
   });
 
   test('probe honors the GSTACK_SKIP_ASIDE=1 opt-out and bounds the readiness call even on stock macOS', () => {
-    // Opt-out short-circuits to NEEDS_ASIDE before `command -v aside` is even consulted.
+    // Off-macOS short-circuits to NEEDS_ASIDE before `command -v aside` is even
+    // consulted (#2864): the Aside CLI has no non-macOS build, so the answer
+    // cannot change. GSTACK_PLATFORM names the host for tests and unusual
+    // platforms — the same override the NEEDS_ASIDE line already prints.
     // E7 (#2902): the installer's ~/.local/bin is not on the default macOS PATH, so the probe falls back to it.
-    expect(setupProbe).toContain('_A=aside; command -v aside >/dev/null || _A=$(command -v ~/.local/bin/aside)');
-    expect(setupProbe).toMatch(/if \[ "\$\{GSTACK_SKIP_ASIDE:-\}" = "1" \] \|\| \[ -z "\$_A" \]; then\n\s*echo "NEEDS_ASIDE: \$\{GSTACK_PLATFORM:-\$\(uname\)\}"/);
+    expect(setupProbe).toContain('if [ "${GSTACK_PLATFORM:-$(uname)}" = "Darwin" ]; then\n  _A=aside; command -v aside >/dev/null || _A=$(command -v ~/.local/bin/aside)\nfi');
+    expect(setupProbe).toMatch(/if \[ "\$\{GSTACK_PLATFORM:-\$\(uname\)\}" != "Darwin" \] \|\| \[ "\$\{GSTACK_SKIP_ASIDE:-\}" = "1" \] \|\| \[ -z "\$\{_A:-\}" \]; then\n\s*echo "NEEDS_ASIDE: \$\{GSTACK_PLATFORM:-\$\(uname\)\}"/);
     // Deadline chain: gtimeout (coreutils on macOS) → timeout (Linux) → perl alarm (stock macOS ships neither).
     expect(setupProbe).toContain('gtimeout 30 "$@"');
     expect(setupProbe).toContain('timeout 30 "$@"');
@@ -193,10 +196,12 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
       const shells = ['sh', 'bash', 'zsh'].map(executable).filter((shell): shell is string => !!shell);
       expect(shells.length).toBeGreaterThan(0);
       const base = shellPath(path.join(dir, 'base'));
+      // GSTACK_PLATFORM: 'Darwin' simulates the one host Aside ships for — off
+      // macOS the gate short-circuits to NEEDS_ASIDE before any lookup (#2864).
       for (const arm of arms) {
         const PATH = arm === 'none' ? base : `${shellPath(path.join(dir, arm))}:${base}`;
         for (const shell of shells) {
-          const r = spawnSync(shell, ['-c', setupProbe], { env: { PATH }, encoding: 'utf8', timeout: 30_000 });
+          const r = spawnSync(shell, ['-c', setupProbe], { env: { PATH, GSTACK_PLATFORM: 'Darwin' }, encoding: 'utf8', timeout: 30_000 });
           const status = arm === 'none' ? 'ASIDE_UNAVAILABLE: bounded probe unavailable' : 'READY: aside';
           const name = path.basename(shell).replace(/\.exe$/i, '');
           expect(`${name}/${arm}: ${r.stdout.trim()}`).toBe(`${name}/${arm}: ${status}`);
@@ -205,7 +210,7 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
       const reasons = { window: 'No browser window is open for account u0', preload: "Error: Cannot find module '/x/preload.cjs'" };
       for (const [name, reason] of Object.entries(reasons)) {
         for (const shell of shells) {
-          const r = spawnSync(shell, ['-c', setupProbe], { env: { PATH: `${shellPath(path.join(dir, 'gt'))}:${shellPath(path.join(dir, name))}` }, encoding: 'utf8', timeout: 30_000 });
+          const r = spawnSync(shell, ['-c', setupProbe], { env: { PATH: `${shellPath(path.join(dir, 'gt'))}:${shellPath(path.join(dir, name))}`, GSTACK_PLATFORM: 'Darwin' }, encoding: 'utf8', timeout: 30_000 });
           const executableName = path.basename(shell).replace(/\.exe$/i, '');
           expect(`${executableName}/${name}: ${r.stdout.trim()}`).toBe(`${executableName}/${name}: ASIDE_CLI_ERROR: exit 1; inspect aside --help locally`);
           expect(r.stdout).not.toContain(reason);
@@ -222,7 +227,7 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
       write(path.join(home, '.local', 'bin', 'aside'), '#!/bin/sh\necho "ASIDE_READY /tmp/x"\n');
       wrap(lookup('grep')!, path.join(dir, 'grep-only', 'grep'));
       for (const shell of shells) {
-        const offPath = spawnSync(shell, ['-c', setupProbe], { env: { HOME: home, PATH: `${shellPath(path.join(dir, 'gt'))}:${shellPath(path.join(dir, 'grep-only'))}` }, encoding: 'utf8', timeout: 30_000 });
+        const offPath = spawnSync(shell, ['-c', setupProbe], { env: { HOME: home, PATH: `${shellPath(path.join(dir, 'gt'))}:${shellPath(path.join(dir, 'grep-only'))}`, GSTACK_PLATFORM: 'Darwin' }, encoding: 'utf8', timeout: 30_000 });
         expect(offPath.stdout.trim()).toBe(`READY: ${path.join(home, '.local', 'bin', 'aside')}`);
       }
     } finally {

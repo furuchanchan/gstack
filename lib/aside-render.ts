@@ -76,6 +76,14 @@ export type AsideProbe =
 
 /** Same probe the skills run in BROWSER SETUP: binary present, app answering. */
 export function probeAside(timeoutMs = 30_000): AsideProbe {
+  // Aside ships for macOS 15+ only: off macOS the answer cannot change, so the
+  // fallback browser is selected directly instead of reaching it by way of a
+  // check that only makes sense on a Mac. GSTACK_PLATFORM names the host for
+  // tests and unusual platforms — the same override the skills' probe reads.
+  const namedPlatform = process.env.GSTACK_PLATFORM;
+  if (namedPlatform ? namedPlatform !== 'Darwin' : process.platform !== 'darwin') {
+    return { ok: false, reason: 'NEEDS_ASIDE', detail: `Aside ships for macOS 15+ only — the bundled browser is the only path on this host (${namedPlatform ?? process.platform})` };
+  }
   if (process.env.GSTACK_SKIP_ASIDE === '1') {
     return { ok: false, reason: 'NEEDS_ASIDE', detail: 'GSTACK_SKIP_ASIDE=1 — Aside skipped by request' };
   }

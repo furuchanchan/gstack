@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.91.37.0] - 2026-10-07
+
+**Linux and Windows stop wasting a probe on a browser that cannot exist there.**
+
+Every browser skill's BROWSER SETUP block ran the Aside readiness check on every OS. Aside ships for macOS 15+ only, so on Linux and Windows the probe could only ever fail — the skills burned a real lookup (PATH search, `~/.local/bin` check, spawn) to learn `NEEDS_ASIDE` before reaching the bundled browser they were always going to pick.
+
+- **Off-macOS the probe is skipped entirely.** On a non-Darwin host the emitted check answers `NEEDS_ASIDE: <platform>` immediately — the same line it printed before, naming the same platform — and the library probe (`probeAside`, used by make-pdf and gstack-render) returns the same verdict without spawning anything. `NEEDS_ASIDE`, `GSTACK_SKIP_ASIDE=1`, and every other probe status are unchanged on macOS.
+- **`GSTACK_PLATFORM` names the host everywhere.** The env var already printed by the `NEEDS_ASIDE:` line now also overrides `process.platform`/`uname` for the gate itself, so tests and unusual platforms report the host they claim.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**
