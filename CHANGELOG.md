@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.91.39.0] - 2026-10-07
+
+**The Codex outside voice no longer reads or executes its own installed skills.**
+
+The filesystem boundary prefix on every `codex exec`/`codex review` prompt now
+fences `~/.codex/` alongside `~/.claude/` and `~/.agents/` (#2847). Codex keeps
+user skills under `~/.codex/skills/`; with the gap, a reviewer could wander into
+its own `gstack-review`/`security-best-practices` installs and burn the pass
+self-triggering skill workflows instead of reviewing the diff. The codex host
+`boundaryInstruction`, the `/codex` skill templates, and the boundary oracle in
+`test/helpers/codex-boundary-evidence.ts` all cover the path now.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

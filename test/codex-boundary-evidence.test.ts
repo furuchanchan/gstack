@@ -12,6 +12,8 @@ describe('CODEX_BOUNDARY command oracle', () => {
   });
   test.each([
     `/bin/bash -lc 'cat ~/.agents/skills/release-notes/references/checklist.md'`,
+    `/bin/bash -lc 'cat ~/.codex/skills/gstack-review/SKILL.md'`,
+    `/bin/bash -lc 'ls $HOME/.codex/skills'`,
     `/bin/bash -lc 'ls .claude/skills'`,
     `/bin/bash -lc 'sed -n 1,20p /home/runner/.claude/skills/gstack/review/SKILL.md'`,
     `/bin/bash -lc 'ls agents'`,

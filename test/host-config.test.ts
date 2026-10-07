@@ -565,7 +565,7 @@ describe('host config correctness', () => {
   test('codex has boundary instruction', () => {
     expect(codex.boundaryInstruction).toBeDefined();
     expect(codex.boundaryInstruction).toMatch(/do not read or execute any files under/i);
-    for (const glob of ['~/.claude/', '~/.agents/', '.claude/skills/', 'agents/']) {
+    for (const glob of ['~/.claude/', '~/.agents/', '~/.codex/', '.claude/skills/', 'agents/']) {
       expect(codex.boundaryInstruction).toContain(glob);
     }
   });

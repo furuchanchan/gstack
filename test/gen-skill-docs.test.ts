@@ -2964,12 +2964,15 @@ describe('Codex generation (--host codex)', () => {
     // codex skill), not the gstack Codex host install path.
     // `~/.codex/config.toml` is the same user-facing class: the shared
     // codexPreflight's model_unusable branch (#2477) points at the CLI's own
-    // config file, where the rejected `model =` pin lives.
+    // config file, where the rejected `model =` pin lives. '~/.codex/, ' is
+    // the codex-boundary instruction's glob entry (#2847) — prompt text
+    // addressed to the Codex reviewer, not a host path reference.
     expect(content).not.toContain('.agents/skills');
     expect(
       content
         .replaceAll('~/.codex/sessions/', '')
-        .replaceAll('~/.codex/config.toml', ''),
+        .replaceAll('~/.codex/config.toml', '')
+        .replaceAll('~/.codex/, ', ''),
     ).not.toContain('~/.codex/');
   });
 
@@ -2984,7 +2987,8 @@ describe('Codex generation (--host codex)', () => {
     expect(
       content
         .replaceAll('~/.codex/sessions/', '')
-        .replaceAll('~/.codex/config.toml', ''),
+        .replaceAll('~/.codex/config.toml', '')
+        .replaceAll('~/.codex/, ', ''),
     ).not.toContain('~/.codex/');
   });
 
@@ -2998,12 +3002,14 @@ describe('Codex generation (--host codex)', () => {
       // logs, referenced by the review/ship timeout guidance) and
       // ~/.codex/config.toml (the model_unusable guidance in the shared
       // codexPreflight, #2477) are the same user-facing class, so they are
-      // scrubbed before the ban.
+      // scrubbed before the ban. '~/.codex/, ' is the boundary instruction's
+      // glob list (#2847) — prompt text addressed to Codex, not a host path.
       if (skill.dir !== 'pair-agent' && skill.dir !== 'codex' && skill.dir !== 'autoplan') {
         expect(
           content
             .replaceAll('~/.codex/sessions/', '')
-            .replaceAll('~/.codex/config.toml', ''),
+            .replaceAll('~/.codex/config.toml', '')
+            .replaceAll('~/.codex/, ', ''),
         ).not.toContain('~/.codex/');
       }
       // gstack-upgrade legitimately references .agents/skills for cross-platform detection
