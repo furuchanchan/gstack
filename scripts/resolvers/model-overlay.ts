@@ -18,6 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isBoundedScopeModel } from '../models';
 import type { TemplateContext } from './types';
 
 const OVERLAY_DIR = path.resolve(import.meta.dir, '../../model-overlays');
@@ -49,7 +50,7 @@ export function generateModelOverlay(ctx: TemplateContext): string {
   const content = readOverlay(ctx.model);
   if (!content) return '';
 
-  const precedence = ctx.model === 'gpt-5.6-sol'
+  const precedence = ctx.model !== undefined && isBoundedScopeModel(ctx.model)
     ? `The following instructions disambiguate scope for the ${ctx.model} model.
 They govern ambiguous completeness words such as \`complete\`, \`full\`, \`every\`,
 \`exhaustive\`, \`100%\`, and \`Boil the Ocean\`, and when to stop iterating on

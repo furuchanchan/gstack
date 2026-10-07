@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.45.0] - 2026-10-07
+
+**Codex model tiers move to GPT-6: `gpt-6-sol` and `gpt-6-luna` now carry the bounded-scope profile alongside `gpt-5.6-sol`.**
+
+The Sol/Luna tiers were pinned to the 5.6 generation. The bounded-scope profile ("the explicit task is the lake") now applies to `gpt-6-sol` and `gpt-6-luna` as well, and — unlike 5.6 Sol's exact-only matching — the GPT-6 profiles accept dated slugs such as `gpt-6-sol-2026-10-01` during the transition. `gpt-6-astra` remains the frontier default; `gpt-5.6-sol` keeps working exactly as before, including the setup warning on near-miss slugs.
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

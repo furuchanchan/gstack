@@ -24,12 +24,21 @@ export const ALL_MODEL_NAMES = [
   'gpt',
   'gpt-5.4',
   'gpt-5.6-sol',
+  'gpt-6-sol',
+  'gpt-6-luna',
   'gpt-6-astra',
   'gemini',
   'o-series',
 ] as const;
 
 export type Model = (typeof ALL_MODEL_NAMES)[number];
+
+/** Models that carry the bounded-scope ("the explicit task is the lake") profile. */
+export const BOUNDED_SCOPE_MODELS: readonly string[] = ['gpt-5.6-sol', 'gpt-6-sol', 'gpt-6-luna'];
+
+export function isBoundedScopeModel(model: string | undefined): boolean {
+  return model !== undefined && BOUNDED_SCOPE_MODELS.includes(model);
+}
 
 /**
  * Resolve a model argument from CLI input to a known Model family.
@@ -39,7 +48,9 @@ export type Model = (typeof ALL_MODEL_NAMES)[number];
  *
  * Precedence rules:
  * 1. Exact match against ALL_MODEL_NAMES → return as-is. This is the ONLY
- *    path that selects `gpt-5.6-sol` — Sol is intentionally exact-only.
+ *    path that selects `gpt-5.6-sol` — 5.6 Sol is intentionally exact-only
+ *    (its dated snapshots stay near-misses). The GPT-6 Sol/Luna profiles
+ *    accept dated suffixes via family heuristics below.
  *    It is also how to force a model-pinned profile: `--model opus-4-7`,
  *    `--model sonnet-5`, and so on.
  * 2. Family heuristics for common variants:
@@ -75,11 +86,16 @@ export function resolveModel(input: string): Model | null {
   }
 
   // Family heuristics
-  // Sol never reaches here — the exact match above already returned it. Do
-  // not add a Sol family pattern: Terra, Luna, future 5.6 variants, and
-  // suffixed model IDs must NOT inherit Sol's behavioral profile; they fall
-  // through to the generic `gpt` family below.
+  // gpt-5.6-sol never reaches here — the exact match above already returned
+  // it, and no 5.6 Sol family pattern exists: 5.6 Terra, 5.6 Luna, and
+  // suffixed 5.6 Sol IDs must NOT inherit its profile; they fall through to
+  // the generic `gpt` family below.
+  // GPT-6 Sol and Luna deliberately differ (#2943): dated snapshots like
+  // `gpt-6-sol-2026-10-01` are the same served tier, so they resolve to the
+  // profile.
   if (/^gpt-6-astra(-|$)/.test(s)) return 'gpt-6-astra';
+  if (/^gpt-6-sol(-|$)/.test(s)) return 'gpt-6-sol';
+  if (/^gpt-6-luna(-|$)/.test(s)) return 'gpt-6-luna';
   if (/^gpt-5\.4(-|$)/.test(s)) return 'gpt-5.4';
   if (/^gpt(-|$)/.test(s)) return 'gpt';
   if (/^o[0-9]+(-|$)/.test(s)) return 'o-series';

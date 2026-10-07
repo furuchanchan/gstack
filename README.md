@@ -156,11 +156,12 @@ digest's first line shows its gstack version; re-copy it after upgrading.
 For Codex, setup reads the top-level `model` from
 `${CODEX_HOME:-~/.codex}/config.toml` and generates the matching behavioral
 profile, falling back to `gpt-6-astra` when no usable model is configured.
-`gpt-5.6-sol` automatically receives bounded-scope instructions that
-finish the requested lake without expanding into adjacent cleanup or speculative
-hardening. The Sol profile is exact-match only: dated snapshots and other 5.6
-variants get the generic GPT profile, and setup warns on near-misses like
-`gpt-5.6-sol-2026-08-01`. Override detection with `./setup --host codex --model <id>` — the
+`gpt-5.6-sol`, `gpt-6-sol` and `gpt-6-luna` automatically receive bounded-scope
+instructions that finish the requested lake without expanding into adjacent
+cleanup or speculative hardening. The 5.6 Sol profile is exact-match only:
+its dated snapshots and other 5.6 variants get the generic GPT profile, and
+setup warns on near-misses like `gpt-5.6-sol-2026-08-01`; the GPT-6 Sol and
+Luna profiles accept dated slugs such as `gpt-6-sol-2026-10-01`. Override detection with `./setup --host codex --model <id>` — the
 override applies to that run only; set `model` in your Codex `config.toml` to
 make it stick across upgrades. After changing your Codex model, rerun
 `./setup --host codex` to regenerate the skills.

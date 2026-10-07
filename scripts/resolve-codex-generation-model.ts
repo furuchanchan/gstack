@@ -93,9 +93,12 @@ export function resolveCodexGenerationModel(opts: {
     return fallback(`Unsupported top-level model '${sanitize(parsed.model)}' in ${sanitize(configPath)}; using Codex default ${CODEX_DEFAULT_MODEL}.`);
   }
 
-  // Sol is exact-only by design (Terra/Luna/dated snapshots must not inherit
-  // its profile), but a near-miss like 'gpt-5.6-sol-2026-08-01' silently
-  // family-mapping to generic gpt is unobservable — surface it.
+  // 5.6 Sol is exact-only by design (5.6 Terra/Luna/dated snapshots must not
+  // inherit its profile), but a near-miss like 'gpt-5.6-sol-2026-08-01'
+  // silently family-mapping to generic gpt is unobservable — surface it.
+  // gpt-6-sol-* and gpt-6-luna-* resolve to their own profiles above, so a
+  // 'gpt' result starting with a Sol/Luna-looking slug is genuinely a 5.6
+  // near-miss.
   if (model === 'gpt' && parsed.model.trim().startsWith('gpt-5.6-sol') && parsed.model.trim() !== 'gpt-5.6-sol') {
     warnings.push(`Model '${sanitize(parsed.model)}' maps to the generic gpt profile — the Sol profile requires the exact ID 'gpt-5.6-sol'.`);
   }

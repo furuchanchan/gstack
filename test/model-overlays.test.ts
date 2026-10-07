@@ -129,6 +129,44 @@ describe('GPT-5.6 Sol model profile', () => {
   });
 });
 
+describe('GPT-6 Sol/Luna bounded-scope tiers (#2943)', () => {
+  test('bare IDs and dated slugs resolve to their profiles', () => {
+    expect(resolveModel('gpt-6-sol')).toBe('gpt-6-sol');
+    expect(resolveModel('gpt-6-sol-2026-10-01')).toBe('gpt-6-sol');
+    expect(resolveModel('gpt-6-luna')).toBe('gpt-6-luna');
+    expect(resolveModel('gpt-6-luna-20261001')).toBe('gpt-6-luna');
+    // Sol/Luna-looking slugs outside the 6 family stay generic.
+    expect(resolveModel('gpt-6-terra')).toBe('gpt');
+    expect(resolveModel('gpt-7-sol')).toBe('gpt');
+  });
+
+  test('gpt-6-sol ships the bounded-scope overlay verbatim', () => {
+    const raw = readOverlay('gpt-6-sol');
+    expect(raw).toContain('The explicit task is the lake');
+    expect(raw).toContain('one clean relevant verification pass');
+    expect(raw).not.toContain('{{INHERIT');
+  });
+
+  test('gpt-6-luna inherits the Sol profile and adds the micro-tier line', () => {
+    const raw = readOverlay('gpt-6-luna');
+    expect(raw).toContain('The explicit task is the lake');
+    expect(raw).toContain('Micro tier');
+    expect(raw).not.toContain('{{INHERIT');
+  });
+
+  test('wrapper and completeness fire for both new tiers', () => {
+    for (const model of ['gpt-6-sol', 'gpt-6-luna'] as const) {
+      const out = generateModelOverlay(ctx(model));
+      expect(out).toContain('disambiguate scope');
+      expect(out).toContain(`the ${model} model`);
+      const completeness = generateCompletenessSection(ctx(model));
+      expect(completeness).toContain("inside the user's explicit task boundary");
+      expect(completeness).toContain('report them, do not implement them');
+      expect(generateCompletenessSection({ ...ctx(model), explainLevel: 'terse' })).toBe('');
+    }
+  });
+});
+
 describe('SETUP_COMMAND resolver', () => {
   test('claude keeps bare ./setup; every other host reinstalls itself', () => {
     expect(generateSetupCommand({ ...ctx('claude'), host: 'claude' })).toBe('./setup');
