@@ -112,6 +112,59 @@ describe("pre-push hook gating", () => {
   });
 });
 
+// #3060: the engine exempts selfEmail / repoPublicEmails but the hook never
+// passed them, so every push containing an address already public in the repo
+// cried wolf on pii.email.
+describe("commit-author email exemption (#3060)", () => {
+  test("the pusher's own user.email is not flagged", () => {
+    // A real domain — example.com is engine-allowlisted regardless, which
+    // would make this assertion vacuous. The pushed commit is authored by
+    // another address so suppression can only come from selfEmail.
+    git(["config", "user.email", "dev@corp.io"]);
+    const base = git(["rev-parse", "HEAD"]);
+    fs.writeFileSync(path.join(repo, "notes.md"), '"email": "dev@corp.io"\n');
+    git(["add", "notes.md"]);
+    git(["-c", "user.email=other@corp.io", "-c", "user.name=O", "commit", "-q", "-m", "add contact"]);
+    const head = git(["rev-parse", "HEAD"]);
+    const { code, stderr } = runHook(`refs/heads/main ${head} refs/heads/main ${base}\n`);
+    expect(code).toBe(0);
+    expect(stderr).not.toContain("MEDIUM");
+  });
+
+  test("an existing commit author's email is not flagged", () => {
+    // other@corp.io authors a commit that the (simulated) remote already has.
+    fs.writeFileSync(path.join(repo, "a.txt"), "x\n");
+    git(["add", "a.txt"]);
+    git(["-c", "user.email=other@corp.io", "-c", "user.name=O", "commit", "-q", "-m", "by other"]);
+    const base = git(["rev-parse", "HEAD"]);
+    const head = commit("b.txt", '"contact": "other@corp.io"\n', "add contact");
+    const { code, stderr } = runHook(`refs/heads/main ${head} refs/heads/main ${base}\n`);
+    expect(code).toBe(0);
+    expect(stderr).not.toContain("MEDIUM");
+  });
+
+  test("a pushed-range author's email is not flagged either", () => {
+    const base = git(["rev-parse", "HEAD"]);
+    // other@corp.io authors the pushed commit itself; that address becomes
+    // public with the push.
+    fs.writeFileSync(path.join(repo, "c.txt"), '"contact": "other@corp.io"\n');
+    git(["add", "c.txt"]);
+    git(["-c", "user.email=other@corp.io", "-c", "user.name=O", "commit", "-q", "-m", "by other"]);
+    const head = git(["rev-parse", "HEAD"]);
+    const { code, stderr } = runHook(`refs/heads/main ${head} refs/heads/main ${base}\n`);
+    expect(code).toBe(0);
+    expect(stderr).not.toContain("MEDIUM");
+  });
+
+  test("a fresh third-party address is still flagged", () => {
+    const base = git(["rev-parse", "HEAD"]);
+    const head = commit("notes.md", '"email": "carol@corp.io"\n', "add contact");
+    const { code, stderr } = runHook(`refs/heads/main ${head} refs/heads/main ${base}\n`);
+    expect(code).toBe(0);
+    expect(stderr).toContain("MEDIUM");
+  });
+});
+
 // #2856: a 4-part release version is shaped like a public IPv4 address.
 // Assembled at runtime so this file's own pushed diff carries no IP-shaped
 // literal for the repo's pre-push scan to warn about.

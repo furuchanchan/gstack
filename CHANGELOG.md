@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.91.33.0] - 2026-10-07
+
+**The pre-push hook no longer cries wolf on email addresses that are already public in the repo.**
+
+`gstack-redact-prepush` passed no `selfEmail` or `repoPublicEmails` to the engine, so every push whose added lines contained the pusher's own `user.email` or an existing commit author's address warned `pii.email` on content that was not a new leak — on every such push, for every user of the hook. The hook now collects `git config user.email` plus author/committer emails from the remote-side history and the pushed range (bounded at 200 commits, best-effort — a failed git call passes nothing and behaves as before) and hands them to the engine's existing exemption. Third-party addresses still warn. (#3060)
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

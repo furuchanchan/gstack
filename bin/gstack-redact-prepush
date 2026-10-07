@@ -316,6 +316,39 @@ function collectAddedLines(diff: string): AddedFile[] {
   return added;
 }
 
+/**
+ * pii.email exemptions the engine already supports but the hook never passed
+ * (#3060): the pusher's own `user.email` and the addresses already public in
+ * the repo's commit history are not a new leak. Best-effort only — every git
+ * call goes through the non-strict `git()` helper, so a missing config or a
+ * failed log yields no options and behavior falls back to scanning them all.
+ * Suppression affects only the pii.email MEDIUM path; the blocking HIGH lane
+ * is untouched. Each side is bounded at 200 commits so a huge history or a
+ * giant branch push cannot stall the hook.
+ */
+function emailExemptionOpts(localSha: string, remoteSha: string): {
+  selfEmail?: string;
+  repoPublicEmails?: string[];
+} {
+  const opts: { selfEmail?: string; repoPublicEmails?: string[] } = {};
+  const self = git(["config", "user.email"]).trim();
+  if (self) opts.selfEmail = self;
+  const emails = new Set<string>();
+  const collect = (args: string[]) => {
+    for (const e of git(["log", "--format=%ae%n%ce", "--max-count=200", ...args]).split("\n")) {
+      if (e.trim()) emails.add(e.trim());
+    }
+  };
+  // History being pushed to (existing remote ref only).
+  if (!ZERO.test(remoteSha) && objectExists(remoteSha)) collect([remoteSha]);
+  // Commits in the pushed range — their authors become public with the push.
+  // On a new/zero remote the range is unbounded, so localSha alone (bounded
+  // above) is the right revision.
+  collect([ZERO.test(remoteSha) || !objectExists(remoteSha) ? localSha : `${remoteSha}..${localSha}`]);
+  if (emails.size) opts.repoPublicEmails = [...emails];
+  return opts;
+}
+
 const VERSION_FILE_CONTENT = /^\d+(?:\.\d+)+$/;
 const CHANGELOG_RELEASE_VERSION = /^(#{1,6}[\t ]*\[?v?)\d+(?:\.\d+){3}(?=[\]\t ]|$)/;
 
@@ -517,8 +550,9 @@ function main() {
     // Sliced (see scanAddedLines) so a large-but-legitimate diff is actually
     // scanned rather than blocked unscanned on the engine's size cap.
     // Scanned per file so a pattern can use the file's type (#3048).
+    const emailOpts = emailExemptionOpts(localSha!, remoteSha!);
     for (const part of added) {
-      for (const f of scanAddedLines(part.text, { repoVisibility: "private", ...(part.file ? { sourcePath: part.file } : {}) })) {
+      for (const f of scanAddedLines(part.text, { repoVisibility: "private", ...(part.file ? { sourcePath: part.file } : {}), ...emailOpts })) {
         if (f.severity === "HIGH") allHigh.push(f);
         else if (f.severity === "MEDIUM") mediumCount++;
       }
