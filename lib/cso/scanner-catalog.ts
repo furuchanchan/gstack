@@ -245,7 +245,9 @@ export function selectScanner(
   if (!matches.length)
     throw new CsoError(
       'PREREQUISITE',
-      `No qualified ${scanner} image for ${platform}${profile ? ` (${profile})` : ''}; qualify and review an immutable scanner catalog before execution`,
+      catalog.scanners.length === 0
+        ? `The scanner catalog has not been qualified yet (revision ${catalog.revision}); qualify and review an immutable scanner catalog before execution — the ${platform} host is not the cause`
+        : `No qualified ${scanner} image for ${platform}${profile ? ` (${profile})` : ''} in catalog ${catalog.revision}; qualify and review an immutable scanner catalog before execution`,
     );
   if (matches.length !== 1)
     throw new CsoError('PREREQUISITE', `Select an exact qualified ${scanner} profile for ${platform}`);

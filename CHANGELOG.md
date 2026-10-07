@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.91.38.0] - 2026-10-07
+
+**An unqualified CSO scanner catalog stops blaming your machine.**
+
+While the committed scanner catalog awaited qualification, every `gstack-cso scan` answered `not_assessed` with "No qualified gitleaks image for linux/arm64" — and users moved machines, CI lanes and Docker installs chasing an architecture gap that did not exist. The catalog was empty on every platform.
+
+- **The catalog now takes the blame it earned.** An empty catalog reports "The scanner catalog has not been qualified yet (revision …)" and names the revision; a qualified catalog missing only a selection still reports the platform and profile but names the catalog revision it was checked against.
+- **Setup's preload summary stops naming the host.** "No qualified CSO images are published yet — the image catalogs have not been qualified" replaces the platform-blaming line.
+
 ## [1.91.32.0] - 2026-10-06
 
 **Codex second opinions work on macOS again, and text from a PR or reviewer can no longer run as a shell command.**

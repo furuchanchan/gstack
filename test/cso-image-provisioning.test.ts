@@ -82,6 +82,14 @@ describe('trusted CSO image provisioning',()=>{
     expect(entries.map(entry=>`${entry.kind}:${entry.id}`)).toEqual([...entries.map(entry=>`${entry.kind}:${entry.id}`)].sort());
   });
 
+  // #2940: an empty catalog produced 'No qualified CSO images are published
+  // for this platform' — blaming the host when the catalogs were the cause.
+  test('an empty catalog set names the catalogs, not the host platform (#2940)',async()=>{
+    const result=await provisionCatalogImages([],target,async()=>session({present:()=>true}).value);
+    expect(result.summary).toBe('No qualified CSO images are published yet — the image catalogs have not been qualified; static audits remain available.');
+    expect(result.summary).not.toContain('this platform');
+  });
+
   test('doctor inspection is read-only and marks exact absent digests unavailable',async()=>{
     const entries=qualifiedCatalogImages(completeRuntimeCatalogFixture('doctor-inspection-fixture'),scannerCatalog(),target),fake=session({present:()=>false});
     const result=await inspectCatalogImages(entries,async()=>fake.value);

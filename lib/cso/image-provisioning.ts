@@ -178,7 +178,7 @@ export async function provisionCatalogImages(
       downloaded: 0,
       deadlineReached: false,
       unavailable: [],
-      summary: 'No qualified CSO images are published for this platform; static audits remain available.',
+      summary: 'No qualified CSO images are published yet — the image catalogs have not been qualified; static audits remain available.',
     };
   if (
     !Number.isSafeInteger(perImageBudgetMs) ||

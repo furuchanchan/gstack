@@ -66,7 +66,18 @@ describe('reviewed scanner catalog contract', () => {
     for (const profile of SCANNER_CATALOG.scanners) expect([profile.state, profile.image]).toEqual(['qualified', expect.stringMatching(/@sha256:[a-f0-9]{64}$/)]);
     for (const id of SCANNER_IDS) for (const platform of ['linux/amd64', 'linux/arm64'] as const)
       if (!SCANNER_CATALOG.scanners.some(profile => profile.scanner === id && profile.platform === platform)) expect(() => selectScanner(id, platform)).toThrow('No qualified');
-    expect(() => selectScanner('gitleaks', 'linux/amd64', undefined, EMPTY_CATALOG)).toThrow('No qualified');
+    expect(() => selectScanner('gitleaks', 'linux/amd64', undefined, EMPTY_CATALOG)).toThrow('has not been qualified yet');
+  });
+  // #2940: an empty catalog blamed the host platform ('No qualified gitleaks
+  // image for linux/arm64') when the catalog itself was unqualified — users
+  // moved machines and CI lanes chasing a gap no host could close.
+  test('an unqualified catalog names the catalog, not the host platform (#2940)', () => {
+    let error: unknown;
+    try { selectScanner('gitleaks', 'linux/arm64', undefined, EMPTY_CATALOG); } catch (e) { error = e; }
+    const message = (error as Error).message;
+    expect(message).toBe('The scanner catalog has not been qualified yet (revision cso-scanners-v3-unqualified); qualify and review an immutable scanner catalog before execution — the linux/arm64 host is not the cause');
+    // A qualified catalog missing only the named profile keeps the selection wording, with the revision for provenance.
+    expect(() => selectScanner('gitleaks', 'linux/arm64', 'missing-profile', catalog('gitleaks'))).toThrow(/No qualified gitleaks image for linux\/arm64 \(missing-profile\) in catalog unit-fixture-only/);
   });
   test.each(SCANNER_IDS)('selects a qualified immutable %s profile', id => { const c = catalog(id); validateScannerCatalog(c); expect(selectScanner(id, 'linux/amd64', undefined, c)).toEqual(scannerProfile(c, id)); });
   test.each(['tag', 'entrypoint', 'policy', 'abi', 'qualification', 'executable', 'version', 'capabilities'])('rejects unreviewed %s', field => {
@@ -84,7 +95,7 @@ describe('reviewed scanner catalog contract', () => {
   test('missing IDs, duplicates, and platform substitution are rejected', () => {
     const c = catalog('gitleaks'); delete (scannerProfile(c, 'gitleaks') as any).id; expect(() => validateScannerCatalog(c)).toThrow();
     const duplicate = catalog('gitleaks'); duplicate.scanners[1].id = duplicate.scanners[0].id; expect(() => validateScannerCatalog(duplicate)).toThrow();
-    expect(() => selectScanner('gitleaks', 'linux/arm64', 'missing-profile', catalog('gitleaks'))).toThrow('No qualified');
+    expect(() => selectScanner('gitleaks', 'linux/arm64', 'missing-profile', catalog('gitleaks'))).toThrow(/No qualified gitleaks image for linux\/arm64 \(missing-profile\) in catalog/);
   });
   test('rules and databases cannot point into repository source or mutable work space', () => {
     const rules = catalog('semgrep'); scannerProfile(rules, 'semgrep').assets!.semgrepRules!.path = '/source/rules.yml'; expect(() => validateScannerCatalog(rules)).toThrow();
@@ -118,7 +129,7 @@ describe('all six helper-owned scanner execution paths', () => {
   });
   test('missing catalog never creates a runner and records the exact prerequisite', async () => {
     let calls = 0; const out = await executeScanner(input('gitleaks'), { catalog: EMPTY_CATALOG, runnerFactory: async () => { calls++; throw new Error('must not run'); } });
-    expect(calls).toBe(0); expect(out.coverage.status).toBe('not_assessed'); expect(out.outcome.gaps[0].message).toContain('No qualified gitleaks');
+    expect(calls).toBe(0); expect(out.coverage.status).toBe('not_assessed'); expect(out.outcome.gaps[0].message).toContain('has not been qualified yet (revision cso-scanners-v3-unqualified)'); expect(out.outcome.gaps[0].message).toContain('host is not the cause');
   });
   test.each(['semgrep', 'osv', 'trivy'] as ScannerId[])('%s missing baked assets cannot launch a scanner or download replacements', async id => {
     let calls = 0; const c = catalog(id); delete scannerProfile(c, id).assets;
