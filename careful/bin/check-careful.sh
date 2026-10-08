@@ -121,6 +121,31 @@ if [ "$_IS_SIMPLE" -eq 1 ]; then
       exit 0
     fi
   fi
+  # Remove-Item -Recurse aimed at a drive root or the home directory (the
+  # PowerShell tool on Windows reaches the same catastrophic command through a
+  # different binary; `-r`/`-Recurse` is matched strictly so -Force alone does
+  # not fire).
+  if grep -qEi '^[[:space:]]*remove-item[[:space:]]' <<< "$CMD" 2>/dev/null \
+    && grep -qEi '(^|[[:space:]])-r(ecurse)?([[:space:]]|$)' <<< "$CMD" 2>/dev/null; then
+    _ROOT_TARGETS=0
+    _SAFE_TARGETS=0
+    set -f
+    for _TOK in $CMD; do
+      # Strip one layer of surrounding quotes: -Recurse "C:\" is still the root.
+      _TOK="${_TOK#\"}"; _TOK="${_TOK%\"}"; _TOK="${_TOK#\'}"; _TOK="${_TOK%\'}"
+      case "$_TOK" in
+        Remove-Item|remove-item|-*|--|[0-9]'>'*|'>'*|'<'*|'&') continue ;;
+        [A-Za-z]:|[A-Za-z]:[\\/]|[A-Za-z]:[\\/]/|'~'|'~/'|'/') _ROOT_TARGETS=1 ;;
+        *) _SAFE_TARGETS=1 ;;
+      esac
+    done
+    set +f
+    if [ "$_ROOT_TARGETS" -eq 1 ] && [ "$_SAFE_TARGETS" -eq 0 ]; then
+      _careful_log_fire "high_remove_item_root"
+      gstack_hook_decision deny "[careful][HIGH] Recursive delete of a drive root or the home directory is blocked while /careful is active. If you truly mean it, end the /careful session first."
+      exit 0
+    fi
+  fi
   # Force-push to the repo's default branch (the shared history everyone pulls).
   # Force is carried by -f/--force OR by git's plus-refspec syntax (+main,
   # +HEAD:main) which needs no flag at all. --force-with-lease never matches.
@@ -256,6 +281,30 @@ fi
 if [ -z "$WARN" ] && grep -qE 'docker\s+(rm\s+-f|system\s+prune)' <<< "$CMD" 2>/dev/null; then
   WARN="Destructive: Docker force-remove or prune. May delete running containers or cached images."
   PATTERN="docker_destructive"
+fi
+
+# PowerShell/cmd destructive families (the PowerShell tool on Windows pipes
+# commands through pwsh/cmd rather than bash). Matched on the lowercased
+# command since cmdlet names are case-insensitive.
+if [ -z "$WARN" ] && grep -qE '(^|[[:space:]])remove-item([[:space:]]|$)' <<< "$CMD_LOWER" 2>/dev/null \
+  && grep -qE '(^|[[:space:]])-r(ecurse)?([[:space:]]|$)' <<< "$CMD_LOWER" 2>/dev/null; then
+  WARN="Destructive: recursive delete (Remove-Item -Recurse). This permanently removes files."
+  PATTERN="remove_item_recurse"
+fi
+
+if [ -z "$WARN" ] && grep -qE '(^|[[:space:]])(rd|rmdir)[[:space:]]+/s([[:space:]]|$)' <<< "$CMD_LOWER" 2>/dev/null; then
+  WARN="Destructive: recursive delete (rd /s). This permanently removes files."
+  PATTERN="rmdir_recursive"
+fi
+
+if [ -z "$WARN" ] && grep -qE '(^|[[:space:]])del[[:space:]]+/s([[:space:]]|$)' <<< "$CMD_LOWER" 2>/dev/null; then
+  WARN="Destructive: recursive delete (del /s). This permanently removes files."
+  PATTERN="del_recursive"
+fi
+
+if [ -z "$WARN" ] && grep -qE 'format-volume([[:space:]]|$)|format-psdrive([[:space:]]|$)|invoke-sqlcmd([[:space:]]|$)' <<< "$CMD_LOWER" 2>/dev/null; then
+  WARN="Destructive: disk format or raw SQL execution detected. This can permanently destroy data."
+  PATTERN="powershell_destructive"
 fi
 
 # --- Additive project patterns ---

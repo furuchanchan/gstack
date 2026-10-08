@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.91.34.0] - 2026-10-09
+
+**/careful and /guard now see the PowerShell tool too, and /freeze covers NotebookEdit.**
+
+On Windows, Claude Code exposes a PowerShell tool that bypassed every hook
+watching only `Bash`, so `Remove-Item -Recurse`, `rd /s`, `del /s`,
+`Format-Volume`, and `Invoke-Sqlcmd ... DROP TABLE` ran unchecked. The hook
+matchers now match `Bash|PowerShell`, and check-careful.sh gained the
+PowerShell/cmd families, including a HIGH-tier deny for `Remove-Item
+-Recurse` aimed at a drive root or home. Freeze-boundary hooks now match
+`Edit|Write|NotebookEdit` so notebook writes can't slip the boundary. (The
+`C:/` vs `/c/` boundary-path mismatch the same report flagged was already
+fixed by `gstack_hook_normalize_path` in #2876.)
+
 ## [1.91.33.0] - 2026-10-06
 
 **A red eval case now gets one clear verdict from its measurement: meets, qualified, extend once, or fix.**

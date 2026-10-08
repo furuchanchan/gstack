@@ -1205,3 +1205,90 @@ describe('gstack_hook_log_fire writes under the resolved state root', () => {
     });
   });
 });
+
+// ============================================================
+// check-careful.sh — PowerShell/cmd families (#3067)
+// Claude Code on Windows exposes a PowerShell tool; the same destructive
+// intent arrives through pwsh/cmd spellings the Bash-era patterns missed.
+// ============================================================
+describe('check-careful.sh powershell families', () => {
+  test('Remove-Item -Recurse on a normal dir warns (medium)', () => {
+    const { exitCode, output } = runHook(CAREFUL_SCRIPT, carefulInput('Remove-Item -Recurse C:\\temp\\build'));
+    expect(exitCode).toBe(0);
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain('Remove-Item');
+  });
+
+  test('Remove-Item -r (abbreviated) warns', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Remove-Item -r C:\\temp\\build'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+  });
+
+  test('Remove-Item -Force without -Recurse does not warn', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Remove-Item -Force C:\\temp\\one.txt'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  test('Remove-Item -Recurse on a drive root denies (high)', () => {
+    const { exitCode, output } = runHook(CAREFUL_SCRIPT, carefulInput('Remove-Item -Recurse C:\\'));
+    expect(exitCode).toBe(0);
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('deny');
+    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain('[careful][HIGH]');
+  });
+
+  test('Remove-Item -Recurse on a drive root plus a safe target falls back to ask', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Remove-Item -Recurse C:\\ C:\\temp'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+  });
+
+  test('rd /s warns', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('rd /s C:\\temp\\build'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain('rd /s');
+  });
+
+  test('rmdir /s /q warns', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('rmdir /s /q C:\\temp\\build'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+  });
+
+  test('del /s warns', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('del /s C:\\temp\\*.log'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain('del /s');
+  });
+
+  test('Format-Volume warns', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Format-Volume -DriveLetter D'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+  });
+
+  test('Invoke-Sqlcmd warns (raw SQL channel)', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Invoke-Sqlcmd -Query "DROP TABLE users"'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBe('ask');
+  });
+
+  test('benign Get-ChildItem allows', () => {
+    const { output } = runHook(CAREFUL_SCRIPT, carefulInput('Get-ChildItem C:\\temp'));
+    expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+});
+
+// The hook matcher is the actual gate: on Windows the PowerShell tool must be
+// matched or check-careful.sh never runs at all, and NotebookEdit must be
+// matched or check-freeze.sh never sees notebook writes.
+describe('skill hook matchers cover PowerShell and NotebookEdit (#3067)', () => {
+  const gen = (name: string) => fs.readFileSync(path.join(ROOT, name, 'SKILL.md'), 'utf-8');
+
+  test('careful + guard match Bash|PowerShell', () => {
+    for (const src of [gen('careful'), gen('guard')]) {
+      expect(src).toContain('matcher: "Bash|PowerShell"');
+    }
+  });
+
+  test('freeze + guard match NotebookEdit alongside Edit and Write', () => {
+    for (const src of [gen('freeze'), gen('guard')]) {
+      expect(src).toContain('matcher: "Edit|Write|NotebookEdit"');
+    }
+  });
+});
