@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.91.69.0] - 2026-10-09
+
+**Setup no longer refuses every TypeScript-entry hook on Windows + Git Bash.**
+
+`bin/gstack-hook-check` bundled all hook entries in one native `bun.exe` process, then joined the results table on the MSYS `/c/...` path it passed in. MSYS argv translation rewrites that argument to `C:/...` before bun sees it, so bun echoed the native form into the table and the join never matched: every TS hook reported `bun could not bundle the TypeScript entry` and `./setup` exited 1 (#3088).
+
+### What this means for you
+
+- `./setup` on Windows + Git Bash registers hooks whose TypeScript entries bundle cleanly, instead of refusing them all.
+- The join now compares drive-letter-normalized keys on both sides (`C:/x` ↔ `/c/x`, `D:\x` ↔ `/d/x`); POSIX spellings are unchanged.
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

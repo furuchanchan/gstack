@@ -203,7 +203,16 @@ for hook in $HOOKS; do
       continue
     fi
     scan="$scan$NL$dir/$entry"
-    result=$(awk -F '\t' -v e="$dir/$entry" '$1 == e' "$BUILT")
+    # Native bun.exe echoes entrypoints back in `C:/...` form (MSYS argv
+    # translation) while $dir stays in `/c/...` form — the join must compare
+    # both keys after drive-letter normalization or every TS hook false-fails.
+    result=$(awk -F '\t' -v e="$dir/$entry" '{
+      key = $1; want = e
+      gsub(/\\/, "/", key); gsub(/\\/, "/", want)
+      if (key ~ /^[A-Za-z]:\//) key = "/" tolower(substr(key, 1, 1)) substr(key, 3)
+      if (want ~ /^[A-Za-z]:\//) want = "/" tolower(substr(want, 1, 1)) substr(want, 3)
+      if (key == want) print $0
+    }' "$BUILT")
     if [ -z "$result" ]; then
       fail "$hook" "$dir/$entry:1" "bun could not bundle the TypeScript entry"
       hook_ok=0

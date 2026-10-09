@@ -107,6 +107,41 @@ describe('gstack-hook-check: the hook list is the registration code', () => {
   });
 });
 
+describe('gstack-hook-check: the built-table join (#3088)', () => {
+  // MSYS argv translation hands native bun `C:/...` entrypoints, so $BUILT is
+  // keyed on that form while the loop's key `$dir/$entry` stays `/c/...`.
+  // The shipped awk program is exercised verbatim over a synthetic table.
+  const script = fs.readFileSync(CHECK, 'utf8');
+  const program = script.match(/result=\$\(awk -F '\\t' -v e="\$dir\/\$entry" '([\s\S]*?)' "\$BUILT"\)/)?.[1];
+  expect(program).toBeTruthy();
+
+  function join(want: string, built: string): string {
+    const r = spawnSync('awk', ['-F', '\t', '-v', `e=${want}`, program!], { input: built, encoding: 'utf8', timeout: 15_000 });
+    expect(r.status).toBe(0);
+    return r.stdout;
+  }
+
+  test('a native Windows `C:/` key matches its `/c/` spelling', () => {
+    const want = '/c/Users/me/.claude/skills/gstack/hosts/claude/hooks/hook.ts';
+    const built = 'C:/Users/me/.claude/skills/gstack/hosts/claude/hooks/hook.ts\tok\thosts/claude/hooks/hook.ts\n';
+    expect(join(want, built)).toBe(built);
+  });
+
+  test('a backslash-separated `D:\\` key matches `/d/`, and other drives do not match', () => {
+    const want = '/d/work/gstack/hook.ts';
+    const other = 'C:/work/gstack/hook.ts\tok\ta.ts\n';
+    const native = 'D:\\work\\gstack\\hook.ts\tok\tb.ts\n';
+    expect(join(want, other)).toBe('');
+    expect(join(want, native)).toBe(native);
+  });
+
+  test('POSIX keys still match verbatim', () => {
+    const want = '/home/me/gstack/hook.ts';
+    const built = '/home/me/gstack/hook.ts\tok\tx.ts\n/home/other/hook.ts\tfail\tx.ts:1\tbad\n';
+    expect(join(want, built)).toBe(`${want}\tok\tx.ts\n`);
+  });
+});
+
 describe('gstack-hook-check: what fails', () => {
   test('healthy fixture passes', () => {
     const root = tmpBase();
