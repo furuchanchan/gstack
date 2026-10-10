@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.91.71.0] - 2026-10-10
+
+**Windows checkouts no longer write nested hook shims and shell entry points with CRLF.**
+
+`.gitattributes` pinned `bin/*` to LF, but a pattern containing a slash anchors to the repo root — so `autoplan/bin/*`, `hosts/*/hooks/*`, `lib/cso/images/*` and friends had no `eol` rule and checked out CRLF under `core.autocrlf=true`. Git Bash tolerates CRLF, so the failure surfaces where a Linux bash runs the Windows checkout's bytes: CRLF shims exit 2, and a PreToolUse hook exiting 2 blocks every tool call (#3110).
+
+### What this means for you
+
+- `hosts/*/hooks/*`, `**/bin/*`, `lib/cso/images/*`, `scripts/app/gstack-browser` and `browse/test/fixtures/mock-claude/*` now pin `eol=lf`; every tracked `#!` file reports `lf` (a regression test enforces the coverage).
+- `scripts/heal-eol.sh` (the half of #3032 that never landed) rewrites stale CRLF working copies left by older checkouts — git never rewrites an unchanged blob — then re-stages each healed path so the size change doesn't read as a modification. It touches only tracked, unmodified, `eol=lf` bash scripts and is a silent no-op otherwise.
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**
