@@ -32,7 +32,13 @@ function trustableTmpdir(dir: string): boolean {
 
 export const TEMP_DIRS = [...new Set([TEMP_DIR, os.tmpdir()].filter((d, i) => i === 0 || trustableTmpdir(d)))];
 
-/** Check if resolvedPath is within dir, using platform-aware separators. */
-export function isPathWithin(resolvedPath: string, dir: string): boolean {
+/** Check if resolvedPath is within dir, using platform-aware separators.
+ *  NTFS is case-insensitive, so Windows compares fold case (8.3 names are
+ *  uppercase); caseInsensitive is a test seam for simulating win32. */
+export function isPathWithin(resolvedPath: string, dir: string, caseInsensitive = IS_WINDOWS): boolean {
+  if (caseInsensitive) {
+    resolvedPath = resolvedPath.toLowerCase();
+    dir = dir.toLowerCase();
+  }
   return resolvedPath === dir || resolvedPath.startsWith(dir + path.sep);
 }

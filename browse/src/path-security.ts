@@ -22,13 +22,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, TEMP_DIRS, isPathWithin } from './platform';
 
-// Resolve safe directories through realpathSync to handle symlinks (e.g., macOS /tmp → /private/tmp)
+// Resolve safe directories through realpathSync.native — same resolver the
+// target-side walk uses, so Windows 8.3 short names (C:\Users\BURCIN~1) expand
+// on both sides of the comparison instead of only the target's (#3104).
 export const SAFE_DIRECTORIES = [...TEMP_DIRS, process.cwd()].map(d => {
-  try { return fs.realpathSync(d); } catch { return d; }
+  try { return fs.realpathSync.native(d); } catch { return d; }
 });
 
 const TEMP_ONLY = [TEMP_DIR].map(d => {
-  try { return fs.realpathSync(d); } catch { return d; }
+  try { return fs.realpathSync.native(d); } catch { return d; }
 });
 
 /**
@@ -74,11 +76,11 @@ export function validateReadPath(filePath: string): void {
   const resolved = path.resolve(filePath);
   let realPath: string;
   try {
-    realPath = fs.realpathSync(resolved);
+    realPath = fs.realpathSync.native(resolved);
   } catch (err: any) {
     if (err.code === 'ENOENT') {
       try {
-        const dir = fs.realpathSync(path.dirname(resolved));
+        const dir = fs.realpathSync.native(path.dirname(resolved));
         realPath = path.join(dir, path.basename(resolved));
       } catch {
         realPath = resolved;
@@ -98,7 +100,7 @@ export function validateTempPath(filePath: string): void {
   const resolved = path.resolve(filePath);
   let realPath: string;
   try {
-    realPath = fs.realpathSync(resolved);
+    realPath = fs.realpathSync.native(resolved);
   } catch (err: any) {
     if (err.code === 'ENOENT') {
       throw new Error('File not found');

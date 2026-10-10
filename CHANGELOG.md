@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.75.0] - 2026-10-10
+
+**`browse pdf` and `make-pdf` work on Windows again when TEMP is an 8.3 short path.**
+
+On Windows a username longer than 8 characters makes the OS hand `os.tmpdir()` the short form (`C:\Users\BURCIN~1\...`). The browse daemon resolved its safe-directory roots with `fs.realpathSync` — which keeps 8.3 components — but resolved every output target with `fs.realpathSync.native`, which expands them, so the long-form target never string-matched the short-form root and every render died with `Path must be within: C:\Users\BURCIN~1\...`. Both sides now resolve through `realpathSync.native`, and `isPathWithin` folds case on Windows since NTFS is case-insensitive.
+
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**
