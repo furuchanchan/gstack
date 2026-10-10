@@ -143,8 +143,8 @@ function plainReview(text: string): string {
 
 export function classifyOutsideReview(input: OutsideReviewInput): OutsideReviewClassification {
   const plain = plainReview(input.text);
-  const levels = [...[...plain.matchAll(/\[(P[0-3])\]|^(P[0-3]):/gm)].map(m => (m[1] ?? m[2]) as Severity),
-    ...(input.gate === 'review' || input.gate === 'structured' ? severityWords(input.text) : [])];
+  const levels = [...[...plain.matchAll(/\[(P[0-3])\]|^(?:\(?\d{1,3}[.)][\t ]+)?(P[0-3])[\t ]*(?::|—|–|-[\t ])/gm)].map(m => (m[1] ?? m[2]) as Severity),
+    ...(input.gate === 'review' || input.gate === 'structured' || input.gate === 'execution' ? severityWords(input.text) : [])];
   const findings = { highest: levels.length ? levels.sort()[0]! : null };
   const ran = execution(input);
   if (ran.state === 'unavailable') return { execution: ran, findings, verdict: 'unavailable', reason: ran.reason, detail: ran.detail };
@@ -161,7 +161,7 @@ export function classifyOutsideReview(input: OutsideReviewInput): OutsideReviewC
   if ((input.gate === 'review' || input.gate === 'proposal') && !/^Recommendation:[\t ]*[^\r\n]+\bbecause\b[\t ]*\S[^\r\n]+$/im.test(plain)) {
     return result('unavailable', 'missing_markers', 'missing review completion recommendation');
   }
-  if ((input.gate === 'structured' || input.gate === 'review') && !findings.highest && !NO_FINDINGS.test(input.text)) {
+  if ((input.gate === 'structured' || input.gate === 'review' || input.gate === 'execution') && !findings.highest && !NO_FINDINGS.test(input.text)) {
     return result('unverified', 'untagged_review', 'missing severity or explicit no-findings conclusion');
   }
   return result(blocking ? 'findings' : 'clean');

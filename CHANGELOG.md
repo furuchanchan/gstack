@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.91.70.0] - 2026-10-10
+
+**`/codex` consult and challenge summaries no longer print `VERDICT: clean` for replies they cannot classify.**
+
+`classifyOutsideReview` read severities only from `[P1]` or a line starting with `P1:`, so Codex's usual `**P1 — title**` / `1. P2 — ...` forms matched nothing; severity words and the untagged-review fallback never ran under the `execution` gate, so every such reply fell through to `clean` (#3105).
+
+### What this means for you
+
+- Bold/dash/numbered severity labels (`**P1 — …**`, `1. P2 — …`, `P2:`) are now detected in label position on every gate, and `Severity: High`-style words count on the `execution` gate too.
+- An `execution` reply with neither a severity label nor an explicit no-findings conclusion prints `unverified` (exit 4), never `clean`.
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

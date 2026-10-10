@@ -47,7 +47,12 @@ describe('classifyOutsideReview: separate execution, findings and verdict', () =
     ['timeout', { text: 'Partial', gate: 'review', exit: 124 }, 'unavailable', null, 'timeout'],
     ['empty', { text: ' \n', gate: 'structured' }, 'unavailable', null, 'empty_response'],
     ['refusal', { text: `I cannot review this request. ${RECOMMEND}`, gate: 'review' }, 'unavailable', null, 'review_refused'],
-    ['consult answer without review markers', { text: 'Use a queue here; the writer pool blocks.', gate: 'execution', stderr: '' }, 'clean', null, undefined],
+    // #3105: an execution reply the helper cannot classify is unverified, never clean.
+    ['consult answer without review markers', { text: 'Use a queue here; the writer pool blocks.', gate: 'execution', stderr: '' }, 'unverified', null, 'untagged_review'],
+    ['execution bold P1 headings', { text: 'Found six P1/P2 issues.\n1. **P1 — Shell heredocs escape scanning.** `file:546`\n2. **P2 — Expanding heredocs lose context.** `file:562`\n\nVerdict: not ready (6 P1/P2)', gate: 'execution', stderr: '' }, 'findings', 'P1', undefined],
+    ['execution numbered dash P2 only', { text: '1. P2 — Naming drifts from the spec.\n\nVerdict: ready', gate: 'execution', stderr: '' }, 'clean', 'P2', undefined],
+    ['execution explicit no-findings', { text: 'Reviewed the diff. No findings.', gate: 'execution', stderr: '' }, 'clean', null, undefined],
+    ['execution severity word label', { text: 'Severity: High — the token leaks across origins.', gate: 'execution', stderr: '' }, 'findings', 'P1', undefined],
   ];
   for (const [label, input, verdict, highest, reason] of cases) {
     test(label, () => {
@@ -162,7 +167,8 @@ describe('B1: a review whose sandbox could not start is unavailable, not clean',
     const review = classifyOutsideReview({ text: read('review-healthy.stdout'), stderr: read('review-healthy.stderr'), gate: 'structured' });
     expect(review.execution.state).toBe('ran');
     expect(read('review-healthy.stderr')).toContain('could not find bubblewrap on PATH');
-    expect(classifyOutsideReview({ text: 'hello', events: read('exec-json-healthy.jsonl'), gate: 'execution' }).verdict).toBe('clean');
+    // #3105: ran but unclassifiable is unverified, not clean.
+    expect(classifyOutsideReview({ text: 'hello', events: read('exec-json-healthy.jsonl'), gate: 'execution' }).verdict).toBe('unverified');
   });
 
   test('a real review that discusses bwrap, namespaces, landlock and seccomp still passes', () => {
