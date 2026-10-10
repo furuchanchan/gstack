@@ -42,17 +42,16 @@ test('adversarial outside failures retain the required native pass without dupli
   }
 });
 
-test('ship design availability is an existing automatic choice, not a new opt-in', () => {
+test('ship design availability asks first like every opt-in caller (#3102)', () => {
+  // #3102: the diff reaches an outside provider, so ship can no longer run the
+  // design voice automatically — the opt-in question carries consent instead.
   for (const host of ALL_HOST_CONFIGS) {
     const ctx: TemplateContext = { host: host.name, skillName: 'ship', tmplPath: 'ship/SKILL.md.tmpl', paths: HOST_PATHS[host.name] };
     const output = outsideVoicePreflight(ctx, { disabledBehavior: 'opt-in' });
-    expect(output).toContain('No additional opt-in is needed');
-    expect(output).toContain('`CODEX_MODE` reports provider availability, not user consent');
+    expect(output).not.toContain('No additional opt-in is needed');
+    expect(output).toContain('_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.');
     const other = outsideVoicePreflight({ ...ctx, skillName: 'review' }, { disabledBehavior: 'opt-in' });
-    expect(other).not.toContain('No additional opt-in is needed');
-    expect(other).toContain('_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.');
-    expect(output.match(/```bash\n([\s\S]*?)\n```/)![1]).toBe(other.match(/```bash\n([\s\S]*?)\n```/)![1].replace(
-      '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.', '_OUTSIDE_CFG=enabled'));
+    expect(output).toBe(other);
   }
 });
 

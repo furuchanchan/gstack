@@ -1594,7 +1594,13 @@ $GSTACK_STATE_ROOT/projects/$SLUG/designs/design-audit-{YYYYMMDD}/
 
 ## Design Outside Voices (independent)
 
-**Automatic:** Outside voices run automatically when Codex is available. No opt-in needed.
+Use AskUserQuestion:
+> "Want outside design voices? Codex evaluates against OpenAI's design hard rules + litmus checks; Claude subagent does an independent consistency audit."
+>
+> A) Yes — run outside design voices
+> B) No — proceed without
+
+If user chooses B, skip this step and continue.
 
 **Check Codex availability:**
 ```bash

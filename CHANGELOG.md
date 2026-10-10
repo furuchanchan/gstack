@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.76.0] - 2026-10-10
+
+**`/design-review` and `/ship` now ask before sending your code to an outside reviewer.**
+
+Both skills sent repo source — the frontend tree, or the branch diff — to the outside-voice CLI automatically, no consent step. Every other outside-voice skill (`/plan-design-review`, `/office-hours`, `/plan-ceo-review`) asks through AskUserQuestion first; these two now do too. `/design-review` asks before its outside voices run, and `/ship`'s lightweight design check asks before the diff leaves the machine; a No skips the step and the review continues with the native pass. Users running under client NDAs or company data policies decide per run what leaves the repo.
+
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

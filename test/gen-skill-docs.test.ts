@@ -2308,6 +2308,14 @@ describe('DESIGN_OUTSIDE_VOICES resolver', () => {
     expect(content).toContain('source audit');
   });
 
+  test('design-review asks before sending source to the outside voice (#3102)', () => {
+    const content = fs.readFileSync(path.join(ROOT, 'design-review', 'SKILL.md'), 'utf-8');
+    const section = content.slice(content.indexOf('Design Outside Voices'));
+    expect(section).toContain('Use AskUserQuestion');
+    expect(section).toContain('Want outside design voices');
+    expect(section).not.toContain('No opt-in needed');
+  });
+
   test('design-consultation contains outside voices section', () => {
     const content = readSkillUnion('design-consultation');
     expect(content).toContain('Design Outside Voices');
@@ -2809,6 +2817,14 @@ describe('DESIGN_REVIEW_LITE extended with Codex', () => {
   test('contains Codex design voice block', () => {
     expect(content).toContain('Codex design voice');
     expect(content).toContain('CODEX (design)');
+  });
+
+  test('asks before sending the diff to the outside voice (#3102)', () => {
+    const voice = content.slice(content.indexOf('Codex design voice'));
+    expect(voice).toContain('Use AskUserQuestion');
+    expect(voice).toContain('sends this branch');
+    expect(voice).not.toContain('automatic if available');
+    expect(voice).not.toContain('No additional opt-in is needed');
   });
 
   test('still contains original checklist steps', () => {

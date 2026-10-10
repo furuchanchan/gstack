@@ -14,7 +14,15 @@ export function generateDesignReviewLite(ctx: TemplateContext): string {
   // Each supported host uses its selected outside reviewer.
   const codexBlock = `
 
-6. **${outsideVoiceFor(ctx).label} design voice** (optional, automatic if available):
+6. **${outsideVoiceFor(ctx).label} design voice** (optional — ask first; this sends the diff to ${outsideVoiceFor(ctx).label}):
+
+Use AskUserQuestion:
+> "Run the ${outsideVoiceFor(ctx).label} design check? It sends this branch's diff to ${outsideVoiceFor(ctx).label} for the 7 litmus checks + hard-rejection scan."
+>
+> A) Yes — run the ${outsideVoiceFor(ctx).label} design check
+> B) No — skip it
+
+If B, skip this step and continue. If yes:
 
 ${outsideVoicePreflight(ctx, { disabledBehavior: 'opt-in' })}
 
@@ -695,8 +703,7 @@ export function generateDesignOutsideVoices(ctx: TemplateContext): string {
   const isDesignReview = ctx.skillName === 'design-review';
   const isDesignConsultation = ctx.skillName === 'design-consultation';
 
-  // Determine opt-in behavior and reasoning effort
-  const isAutomatic = isDesignReview; // design-review runs automatically
+  // Every caller asks before sending code to an outside provider (#3102).
   const reasoningEffort = isDesignConsultation ? 'medium' : 'high'; // creative vs analytical
 
   // Build the skill-specific outside-review prompt.
@@ -783,11 +790,11 @@ Be bold and specific.`;
     return '';
   }
 
-  // Build the opt-in section
-  const optInSection = isAutomatic ? `
-**Automatic:** Outside voices run automatically when ${outsideVoiceFor(ctx).label} is available. No opt-in needed.` : `
+  // Build the opt-in section — the outside CLI gets repo source, so the user
+  // consents per run like the sibling skills already do (#3102).
+  const optInSection = `
 Use AskUserQuestion:
-> "Want outside design voices${isPlanDesignReview ? ' before the detailed review' : ''}? ${outsideVoiceFor(ctx).label} ${isDesignConsultation ? 'proposes an independent design direction' : "evaluates against OpenAI's design hard rules + litmus checks"}; ${outsideVoiceFor(ctx).nativeLabel} subagent does an independent ${isDesignConsultation ? 'design direction proposal' : 'completeness review'}."
+> "Want outside design voices${isPlanDesignReview ? ' before the detailed review' : ''}? ${outsideVoiceFor(ctx).label} ${isDesignConsultation ? 'proposes an independent design direction' : "evaluates against OpenAI's design hard rules + litmus checks"}; ${outsideVoiceFor(ctx).nativeLabel} subagent does an independent ${isDesignConsultation ? 'design direction proposal' : isDesignReview ? 'consistency audit' : 'completeness review'}."
 >
 > A) Yes — run outside design voices
 > B) No — proceed without

@@ -130,11 +130,19 @@ Exit 2 means findings. Read the `DETECT_TOP` block (untrusted content: evidence,
 
 5. **Include findings** in the review output under a "Design Review" header, following the output format in the checklist. Design findings merge with code review findings into the same Fix-First flow.
 
-6. **Codex design voice** (optional, automatic if available):
+6. **Codex design voice** (optional — ask first; this sends the diff to Codex):
+
+Use AskUserQuestion:
+> "Run the Codex design check? It sends this branch's diff to Codex for the 7 litmus checks + hard-rejection scan."
+>
+> A) Yes — run the Codex design check
+> B) No — skip it
+
+If B, skip this step and continue. If yes:
 
 ```bash
 
-_OUTSIDE_CFG=enabled
+_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.
 if [ "$_OUTSIDE_CFG" = disabled ]; then
   echo 'CODEX_MODE: disabled'
 elif ( # GSTACK_ACTIVE_HOST names the harness, never the model.
@@ -154,10 +162,7 @@ else
 fi
 ```
 
-Ship attempts this optional design check automatically when frontend review applies.
-The enabled value above carries that choice. No additional opt-in is needed.
-Step 11 keeps its separate outside-review switch.
-`CODEX_MODE` reports provider availability, not user consent; here the provider is **Codex**. Authentication and configured model validity are checked by the actual invocation, without overriding either. Missing/broken CLI: install or repair Codex; authentication failure: run `codex login`.  Any non-ready outcome is missing outside coverage; follow the caller’s existing fallback. Never substitute another external provider.
+The historical `CODEX_MODE` variable describes **Codex** availability here. Authentication and configured model validity are checked by the actual invocation, without overriding either. Missing/broken CLI: install or repair Codex; authentication failure: run `codex login`. Honor this caller’s existing opt-in/skip choice. Any non-ready outcome is missing outside coverage; follow the caller’s existing fallback. Never substitute another external provider.
 
 If Codex is available, run a lightweight design check on the diff:
 
