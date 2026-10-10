@@ -11,6 +11,7 @@
  */
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { canRevokeWrites } from './helpers/fs-caps';
+import { slugCacheFile, SLUG_CACHE_VERSION_PREFIX } from '../lib/bin-context';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -37,17 +38,12 @@ afterEach(() => {
   fs.rmSync(projectDir, { recursive: true, force: true });
 });
 
-function runHook(stdin: string): { exitCode: number; stdout: string; stderr: string } {
-  const r = spawnSync('bash', [HOOK], {
-    input: stdin,
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      GSTACK_HOME: tmpHome,
-      GSTACK_PROJECT_SLUG: SLUG, // deterministic slug, no git required
-    },
-    timeout: 15_000,
-  });
+function runHook(stdin: string, withSlugEnv = true, extraEnv: Record<string, string> = {}): { exitCode: number; stdout: string; stderr: string } {
+  const env = { ...process.env, GSTACK_HOME: tmpHome, ...extraEnv };
+  // deterministic slug, no git required
+  if (withSlugEnv) env.GSTACK_PROJECT_SLUG = SLUG;
+  else delete env.GSTACK_PROJECT_SLUG;
+  const r = spawnSync('bash', [HOOK], { input: stdin, encoding: 'utf-8', env, timeout: 15_000 });
   return { exitCode: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -103,6 +99,28 @@ describe('timeline-stop-hook (#2553, F5 fail-open)', () => {
       session: '11-1',
     });
     expect(typeof repairs[0].ts).toBe('string');
+  });
+
+  test('resolves the slug from the versioned slug cache — no helper spawn (#3103)', () => {
+    fs.writeFileSync(timelinePath, JSON.stringify({ skill: 'review', event: 'started', session: '33-3' }) + '\n');
+    // The warm per-path entry gstack-slug's v2 writer leaves behind.
+    const key = slugCacheFile(tmpHome, projectDir);
+    fs.mkdirSync(path.dirname(key), { recursive: true });
+    fs.writeFileSync(key, `${SLUG_CACHE_VERSION_PREFIX}${SLUG}`);
+
+    const r = runHook(stopPayload(), false);
+    expect(r.exitCode).toBe(0);
+    const entries = timelineEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries[1]).toMatchObject({ event: 'completed', outcome: 'unknown', source: 'stop-hook' });
+  });
+
+  test('the hook resolves the slug natively — no gstack-slug spawn (#3103)', () => {
+    // The Windows failure mode is spawn cost (2.2-2.8 s through Git bash past
+    // the 2 s deadline), not wrong resolution — pin the no-spawn mechanism.
+    const src = fs.readFileSync(`${HOOK}.ts`, 'utf8');
+    expect(src).toContain('slugFromEnvironment');
+    expect(src).not.toContain(`runBin('gstack-slug'`);
   });
 
   test('idempotent: a second Stop appends nothing new', () => {

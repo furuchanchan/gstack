@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.74.0] - 2026-10-10
+
+**The timeline Stop hook resolves the project slug natively, so it actually repairs on Windows.**
+
+Every Stop event paid about 2.5 s for a `gstack-slug` bash spawn the 2 s deadline always killed — `runBin` through `Git\bin\bash.exe` takes 2.2-2.8 s on a stock Windows machine — so the hook logged "could not resolve project slug" and repaired nothing, one error line per turn of every session. The hook now resolves through `lib/bin-context.ts`'s `slugFromEnvironment`, the parity-tested native port of the script's own resolution order (env override, versioned slug cache, project-root walk, remote-derived slug): a warm cache hit never spawns anything, and a miss resolves without paying for a bash process.
+
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

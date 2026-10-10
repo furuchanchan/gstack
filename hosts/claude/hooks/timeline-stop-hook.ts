@@ -37,7 +37,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { runBin } from './spawn-bin';
+import { slugFromEnvironment } from '../../../lib/bin-context';
 import { resolveStateRoot } from '../../../lib/state-root';
 import { logHookError as sharedLogHookError } from './hook-log';
 
@@ -95,12 +95,13 @@ function main(): void {
   }
 
   // Resolve the project slug the same way the preamble did (GSTACK_PROJECT_SLUG
-  // override, project-root walk, remote-derived slug).
+  // override, project-root walk, remote-derived slug). Through bin-context's
+  // native port, not a bash spawn: on Windows `runBin` pays 2.2-2.8 s starting
+  // Git\bin\bash.exe, which the 2 s deadline always kills (#3103). The native
+  // resolution serves a warm slug-cache hit without spawning anything.
   let slug = '';
   try {
-    const r = runBin('gstack-slug', [], { cwd, encoding: 'utf8', timeout: DEADLINE_MS });
-    const m = (r.stdout ?? '').toString().match(/^SLUG=([A-Za-z0-9._-]+)$/m);
-    if (m) slug = m[1];
+    slug = slugFromEnvironment(resolveStateRoot(), cwd);
   } catch {
     // fall through
   }
