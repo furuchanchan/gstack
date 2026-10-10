@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.73.0] - 2026-10-10
+
+**`/plan-eng-review` reports a completed read-only review as `REPORTED`, not `BLOCKED`.**
+
+A caller that delegates plan review to a read-only reviewer (so the review can't edit the plan it judges) got a complete review in the reply but a `BLOCKED` gate line and `OUTCOME=error` telemetry — a failed review to anyone reading the record. The skill now has a **Reported outcome**: when the review completed but report/log persistence was forbidden, it presents the full review and ledger entries labeled *not persisted*, ends `REPORTED`, and records `OUTCOME=success`. Failed permitted saves and incomplete reviews still take **Blocked outcome**.
+
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

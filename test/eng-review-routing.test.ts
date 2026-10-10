@@ -125,8 +125,12 @@ describe('engineering review routing contracts', () => {
     const policy = compact(between(section, '## Review record and write policy', '{{LEARNINGS_SEARCH}}'));
     expect(policy).toContain('**Recovery routing → Repairable write/read failure**');
     expect(policy).toMatch(/skip forbidden writes/i);
-    expect(recovery).toContain('`OUTCOME=error`');
-    expect(recovery).not.toContain('`OUTCOME=success`');
+    const blocked = between(recovery, '**Blocked outcome:**', '**Reported outcome:**');
+    expect(blocked).toContain('`OUTCOME=error`');
+    expect(blocked).not.toContain('`OUTCOME=success`');
+    const reported = between(recovery, '**Reported outcome:**', '## Section self-check');
+    expect(reported).toContain('`REPORTED`');
+    expect(reported).toContain('`OUTCOME=success`');
   });
 
   test('late changes rerun affected approvals and outputs before another navigation answer', () => {

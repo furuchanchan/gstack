@@ -35,10 +35,10 @@ path authorizes no other; implementation edits require explicit authority.
 
 | Artifact | Destination | If writing is forbidden |
 |---|---|---|
-| Working plan, ledger and complete review report | Selected report file | Ask for a permitted destination if the user can supply one; wait without completion telemetry. If none is permitted, follow **Read-only review** below, then use **Blocked outcome**. |
+| Working plan, ledger and complete review report | Selected report file | Ask for a permitted destination if the user can supply one; wait without completion telemetry. If none is permitted, follow **Read-only review** below, then **Reported outcome**. |
 | QA Test Plan and task JSONL | Discovery paths below | Present each completely as **not persisted** and continue. |
 | TODOS.md | The project's TODO file | Present accepted TODO content as **not persisted** and continue. |
-| Required Review Log | The helper's state location | Present its fields as **not persisted**; at Review Log, use **Blocked outcome** instead of publishing a saved review. The final gate cannot pass without this log. |
+| Required Review Log | The helper's state location | Present its fields as **not persisted**; at Review Log, use **Reported outcome** instead of publishing a saved review. The saved-report gate does not run on this route. |
 | Best-effort metadata/learning logs | Helper-defined locations | Skip forbidden writes; otherwise keep their best-effort behavior. |
 
 QA Test Plan/task JSONL keep discovery paths `$GSTACK_STATE_ROOT/projects/{slug}/`:
@@ -471,9 +471,10 @@ must pass steps 1–4 again.
    if later approved decisions changed its requirements. Do not recreate unchanged output.
 2. **Save and Read back.** Use Plan File Review Report to save the complete body
    and terminal `## GSTACK REVIEW REPORT`; pass its Read-back gate. Forbidden
-   persistence or an unrecovered save requires **Blocked outcome**, not logging.
+   persistence routes to **Reported outcome**; an unrecovered save requires
+   **Blocked outcome**, not logging.
 3. **Log the saved review.** Run Review Log with saved Completion summary values.
-   If the required log is forbidden, show fields as not persisted and take **Blocked outcome**;
+   If the required log is forbidden, show fields as not persisted and take **Reported outcome**;
    failures use the write policy's recovery. Neither supplies completion or saved-dashboard credit.
 4. **Publish.** Display the Review Readiness Dashboard, then present the saved
    Completion summary to the user.
