@@ -104,12 +104,27 @@ function strip(events: ClaudeParentPublicEvent[], policy: OwnedReadPolicy): Clau
   return events;
 }
 
+/** Canonical key ignoring the fields a compact rewrite regenerates: uuid, parentUuid, logicalParentUuid, message.usage. */
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  if (object(v)) return `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`).join(',')}}`;
+  return JSON.stringify(v);
+}
+function canonicalRecordKey(value: Record<string, any>): string {
+  const clone: Record<string, any> = { ...value };
+  delete clone.uuid; delete clone.parentUuid; delete clone.logicalParentUuid;
+  if (object(clone.message)) { clone.message = { ...clone.message }; delete clone.message.usage; }
+  return stableStringify(clone);
+}
+
 /** One record's index entry: its ownership metadata, byte range and (stripped) events. */
 interface Entry extends RecordMeta {
   offset: number;
   length: number;
   events?: ClaudeParentPublicEvent[];
   slots: number;
+  /** Canonical form of the record, for collapsing post-compact copies (#3107). */
+  dupKey?: string;
   /** The message content is an array (the record can make a journal ready). */
   array: boolean;
   jsonResults?: string[];
@@ -151,6 +166,7 @@ function scan(fd: number, size: number, sessionId: string, prior: JournalPrefix 
     const full = recordEvents(value, true, entry.timestampValid);
     entry.events = policy ? strip(full.events, policy) : full.events;
     entry.slots = full.slots;
+    entry.dupKey = canonicalRecordKey(value);
     entry.array = Array.isArray(value.message.content);
     if (entry.array) for (const b of value.message.content)
       if (object(b) && b.type === 'tool_result' && typeof b.tool_use_id === 'string' && /^\s*\{/.test(resultText(b)))
@@ -245,10 +261,20 @@ export function readOwnedClaudePublicTranscript(file: string, owners: string | r
         events: [], diagnostic: { ...(scanned.claudeVersion ? { claudeVersion: scanned.claudeVersion } : {}), rootShape: ownership.shape,
           toolUseIds: scanned.toolUseIds, sha256: scanned.prefix.sha256, complete: scanned.complete } };
     const records: IndexedRecord[] = [];
-    let base = 0, claudeVersion: string | undefined;
+    let base = 0, claudeVersion: string | undefined, compacted = false;
+    // A compact rewrite rewrites the kept conversation as new records: same
+    // content, fresh uuid/parentUuid, zeroed message.usage. A post-boundary
+    // record equal to an earlier owned record adds no event — the hook's
+    // duplicate check would deny it, so collapse it here instead (#3107).
+    // Any other difference keeps the record, so two different records under
+    // one tool ID still deny. Ancestry is decided before this skip.
+    const seen = new Set<string>();
     for (const i of ownership.order!) {
       const entry = scanned.entries[i]!;
-      if (!entry.events) continue;
+      if (entry.type === 'system' && entry.subtype === 'compact_boundary') { compacted = true; continue; }
+      const duplicate = compacted && entry.dupKey !== undefined && seen.has(entry.dupKey);
+      if (entry.dupKey !== undefined) seen.add(entry.dupKey);
+      if (duplicate || !entry.events) continue;
       claudeVersion = entry.version ?? claudeVersion;
       for (const e of entry.events) e.order += base;
       records.push({ offset: entry.offset, length: entry.length, uuid: entry.uuid, base, slots: entry.slots,

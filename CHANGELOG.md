@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.72.0] - 2026-10-10
+
+**The /autoplan phase guard keeps accepting phase entries after a Claude Code auto-compaction.**
+
+Claude Code 2.1.293+ rewrites the kept conversation as fresh records after a `compact_boundary`: same content, new uuids, relinked parents, zeroed `message.usage`. The owned journal reader emitted those copies as new events, so every tool identity appeared twice and the publication guard denied every later phase entry with `tool_identity`. The reader now computes a canonical key per record — the record with `uuid`, `parentUuid`, `logicalParentUuid` and `message.usage` removed — and, once an owned compact boundary has passed, a record whose key already appeared adds no events. Any other difference keeps the record, so two genuinely different records under one tool ID still deny; ancestry is decided before the collapse, so later records stay owned.
+
+
 ## [1.91.68.0] - 2026-10-08
 
 **Claude /cso eval cells run the real scanners again, never break their own source check, and still record what they spent when a post-run check fails.**

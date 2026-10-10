@@ -1432,6 +1432,42 @@ describe('Autoplan restore-point header line ending', () => {
       expect(f.evaluate()).toEqual(allowed ? { allow: true }
         : { allow: false, reason: expect.stringContaining('initialization artifacts do not match') });
     });
+
+  /** Claude Code 2.1.293 auto-compaction: a compact_boundary record, then the kept
+      conversation rewritten as new records — fresh uuids, parentUuid relinked
+      through the boundary, message.usage zeroed. */
+  const compacted = (f: ReturnType<typeof fixture>, rows: any[], tamper?: (copy: any) => void) => {
+    const boundary = { uuid: randomUUID(), parentUuid: null, logicalParentUuid: rows.at(-1)!.uuid,
+      cwd: f.cwd, sessionId: f.sessionId, isSidechain: false,
+      timestamp: new Date(clock + 10_000).toISOString(), type: 'system', subtype: 'compact_boundary' };
+    let prev = boundary.uuid;
+    const copies = rows.map(r => {
+      const copy: any = { ...r, uuid: randomUUID(), parentUuid: prev };
+      if (r.message) copy.message = { ...r.message, usage: {} };
+      tamper?.(copy);
+      prev = copy.uuid;
+      return copy;
+    });
+    fs.appendFileSync(f.input.transcript_path, [boundary, ...copies].map(r => JSON.stringify(r)).join('\n') + '\n');
+  };
+
+  test('post-compact journal copies add no duplicate identities (#3107)', async () => {
+    const f = fixture(); f.message(); f.current();
+    const { rows } = f.journal();
+    compacted(f, rows);
+    expect(await withNativeProjectDirectory(f.cwd, () => runPublicationHook(f.input, ROOT))).toEqual(OWNED_READ_APPROVAL);
+  });
+
+  test('a post-compact copy that differs still denies (#3107)', async () => {
+    const f = fixture(); f.message(); f.current();
+    const { rows } = f.journal();
+    compacted(f, rows, copy => {
+      for (const b of Array.isArray(copy.message?.content) ? copy.message.content : [])
+        if (b.type === 'tool_use' && b.id === 'entry') b.input = { ...b.input, file_path: '/forged/other-phase.md' };
+    });
+    const output: any = await withNativeProjectDirectory(f.cwd, () => runPublicationHook(f.input, ROOT));
+    expect(output?.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
 });
 
 describe('Autoplan ownership in a linked git worktree session', () => {
